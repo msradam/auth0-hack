@@ -1,0 +1,17 @@
+[project]
+name = "amanat"
+version = "0.1.0"
+description = "Privacy-first data governance agent for humanitarian NGOs, powered by Auth0 Token Vault and IBM Granite"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "beeai-framework>=0.1.79",
+    "chainlit>=2.10.0",
+"httpx>=0.28.1",
+    "openai>=2.30.0",
+    "pandas>=3.0.1",
+    "plotly>=6.6.0",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.1.0",
+    "rich>=14.3.3",
+]

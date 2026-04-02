@@ -1,0 +1,16 @@
+# Auth0 secrets
+client_secret
+.env
+*.env
+!.env.example
+*_client.yml
+setup_connections.sh
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Chainlit
+.files/
+audit-logs/
