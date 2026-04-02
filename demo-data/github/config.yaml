@@ -1,0 +1,41 @@
+# Application configuration - NGO Case Management System
+app:
+  name: CaseTracker
+  environment: production
+  debug: false
+
+database:
+  host: db.ngo-example.org
+  port: 5432
+  name: beneficiary_registry
+  # TODO: move to environment variables
+  username: admin
+  password: Pr0duction_P@ss2026!
+
+redis:
+  host: redis.ngo-example.org
+  port: 6379
+
+storage:
+  provider: s3
+  bucket: ngo-beneficiary-docs
+  region: eu-west-1
+
+# Beneficiary data retention
+data_retention:
+  case_files_days: 730  # 2 years
+  biometric_data_days: 365
+  # WARNING: ICRC recommends minimum retention periods
+  # but we haven't implemented automated deletion yet
+
+# Field office locations
+offices:
+  - name: Za'atari Field Office
+    gps: "32.2928, 36.3219"
+    staff_count: 23
+  - name: Azraq Field Office
+    gps: "31.8375, 36.2356"
+    staff_count: 15
+  - name: Amman HQ
+    gps: "31.9539, 35.9282"
+    staff_count: 42

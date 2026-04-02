@@ -11,6 +11,7 @@ In live mode: exchanges Auth0 tokens for federated connection tokens.
 """
 
 import os
+import time
 import httpx
 from dataclasses import dataclass, field
 
@@ -44,6 +45,11 @@ class TokenInfo:
     scope: str = ""
     connection: str = ""
     expires_in: int = 3600
+    _issued_at: float = field(default_factory=time.time)
+
+    def is_expired(self, buffer_seconds: int = 60) -> bool:
+        """Return True if token is expired or will expire within buffer_seconds."""
+        return time.time() >= (self._issued_at + self.expires_in - buffer_seconds)
 
 
 @dataclass
@@ -181,16 +187,23 @@ class Auth0TokenVault:
         return token
 
     def get_token(self, service: str) -> TokenInfo:
-        """Get a cached token or exchange for a new one."""
+        """Get a cached token or exchange for a new one. Re-exchanges if expired."""
         if not self._session:
             raise RuntimeError("No active session.")
 
-        # Return cached token if available
-        if service in self._session.tokens:
-            return self._session.tokens[service]
+        cached = self._session.tokens.get(service)
+        if cached and not cached.is_expired():
+            return cached
 
-        # Otherwise exchange
+        # Token missing or expired — exchange for a fresh one
         return self.exchange_token(service)
+
+    def revoke_service(self, service: str) -> None:
+        """Remove a connected service's token from the session."""
+        if self._session:
+            self._session.tokens.pop(service, None)
+            if service in self._session.connected_services:
+                self._session.connected_services.remove(service)
 
     @property
     def session(self) -> UserSession | None:

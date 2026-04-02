@@ -190,6 +190,22 @@ def check_consent(file_id: str, service: str) -> StringToolOutput:
     return _run("check_consent", file_id=file_id, service=service)
 
 
+@tool
+def parse_document(file_path: str) -> StringToolOutput:
+    """DOCUMENT PARSING: Parse a PDF, DOCX, PPTX, or other document and scan
+    it for PII using Docling. Use this when a user uploads a real document
+    (situation report, intake form, registration sheet) for governance analysis.
+    Extracts text, tables, and structure from the document, then runs PII detection.
+
+    Args:
+        file_path: Local path to the document to parse and scan.
+    """
+    from amanat.tools.docling_tool import parse_and_scan_document
+    result = parse_and_scan_document(file_path)
+    text = result.split("\n---JSON---")[0] if "---JSON---" in result else result
+    return StringToolOutput(text)
+
+
 # ── All tools list for agent construction ──────────────────────────────
 
 ALL_TOOLS = [
@@ -204,6 +220,7 @@ ALL_TOOLS = [
     retention_scan,
     generate_dpia,
     check_consent,
+    parse_document,
 ]
 
 

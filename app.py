@@ -21,6 +21,7 @@ from amanat.tools.scanner import execute_tool
 from amanat.tools.bee_tools import get_openai_tools_schema
 from amanat.agent import SYSTEM_PROMPT, AGENT_ROLE, AGENT_INSTRUCTIONS, _get_extra_instructions
 from amanat.auth import Auth0TokenVault
+from amanat.ciba import requires_ciba, request_ciba_authorization
 
 # Build OpenAI-format tool list from BeeAI tool definitions
 TOOLS = get_openai_tools_schema()
@@ -282,10 +283,27 @@ async def connected_accounts_complete(request):
     else:
         return JSONResponse({"success": False, "service": svc_display, "error": resp.json()})
 
+async def disconnect_service(request):
+    """Revoke a connected service from the user's Token Vault session."""
+    service = request.path_params.get("service", "")
+    if not service:
+        return JSONResponse({"error": "Missing service"}, 400)
+
+    # Remove from the in-memory vault session
+    # (Token Vault itself revokes on next exchange attempt)
+    display = _SERVICE_DISPLAY.get(service, {}).get("name", service)
+    return JSONResponse({
+        "success": True,
+        "message": f"{display} disconnected. Reconnect via /connect/{service}.",
+        "service": service,
+    })
+
+
 # Insert custom routes at the top of the app so they resolve before Chainlit's catch-all
 chainlit_app.routes.insert(0, Route("/connect/{service}", connect_service, methods=["GET"]))
 chainlit_app.routes.insert(1, Route("/auth/connected-accounts/callback", connected_accounts_callback, methods=["GET"]))
 chainlit_app.routes.insert(2, Route("/auth/connected-accounts/complete", connected_accounts_complete, methods=["POST"]))
+chainlit_app.routes.insert(3, Route("/disconnect/{service}", disconnect_service, methods=["GET"]))
 
 # Use demo mode when no Auth0 OAuth env vars are set
 DEMO_MODE = not os.environ.get("OAUTH_AUTH0_CLIENT_ID")
@@ -449,19 +467,23 @@ async def on_start():
         if connected:
             status_lines.append("**Connected services:**")
             status_lines.extend(connected)
+            status_lines.append("")
+            status_lines.append("To disconnect a service: `/disconnect/{service}`")
 
         if not_connected:
             status_lines.append("")
             status_lines.append("**Available to connect:**")
             for svc in not_connected:
                 display = _SERVICE_DISPLAY.get(svc, {})
+                scopes = " ".join(CONNECTIONS[svc]["scopes"]) if svc in CONNECTIONS else ""
                 status_lines.append(
-                    f"{display.get('icon', '•')} {display.get('name', svc)} — "
-                    f"[Connect {display.get('name', svc)}](/connect/{svc})"
+                    f"{display.get('icon', '•')} **{display.get('name', svc)}** — "
+                    f"[Connect →](/connect/{svc}) *(scopes: `{scopes}`)*"
                 )
 
         status_lines.append("")
-        status_lines.append("All analysis runs locally via IBM Granite 4 Micro. Your data never leaves this machine.")
+        status_lines.append("🔒 All analysis runs locally via IBM Granite 4 Micro. Your data never leaves this machine.")
+        status_lines.append("⚠️ High-stakes actions (deleting protected data) require out-of-band authorization via Auth0 Guardian.")
 
         await cl.Message(
             content="\n".join(status_lines),
@@ -703,32 +725,97 @@ async def on_message(message: cl.Message):
                         print(f"[Amanat] Token for {token_service}: FAILED ({e})")
                         pass
 
-            # Confirmation for destructive actions
+            # Authorization for destructive actions
             if fn_name in REMEDIATION_TOOLS:
                 file_id = fn_args.get("file_id", "unknown")
+                file_name = fn_args.get("name", file_id)
                 action_label = {
-                    "revoke_sharing": "revoke public sharing on",
+                    "revoke_sharing": "revoke sharing on",
                     "download_file": "download",
-                    "delete_file": "move to trash",
+                    "delete_file": "delete",
                 }.get(fn_name, fn_name)
 
-                file_name = fn_args.get("name", file_id)
-                res = await cl.AskActionMessage(
-                    content=f"**Confirm:** {action_label} `{file_name}`?",
-                    actions=[
-                        cl.Action(name="confirm", payload={"value": "yes"}, label="Yes, proceed"),
-                        cl.Action(name="cancel", payload={"value": "no"}, label="Cancel"),
-                    ],
-                    timeout=120,
-                ).send()
+                # Check if this file requires CIBA (out-of-band authorization)
+                ciba_required, data_category = requires_ciba(file_name, file_id)
+                user = cl.user_session.get("user")
+                user_id = user.identifier if user else None
 
-                if not res or res.get("payload", {}).get("value") != "yes":
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": json.dumps({"status": "cancelled", "message": "User cancelled this action."}),
+                if ciba_required and user_id and not DEMO_MODE:
+                    # High-stakes file — use CIBA for out-of-band authorization
+                    await cl.Message(
+                        content=(
+                            f"⚠️ **CIBA Authorization Required**\n\n"
+                            f"This file contains **{data_category}**. "
+                            f"An approval request has been sent to your registered device.\n\n"
+                            f"**Action:** {action_label} `{file_name}`\n\n"
+                            f"Check your Auth0 Guardian app or email to approve or deny."
+                        ),
+                        author="Amanat",
+                    ).send()
+                    _audit_log(session_id, "ciba_initiated", {
+                        "tool": fn_name, "file": file_name, "category": data_category,
                     })
-                    continue
+                    try:
+                        await request_ciba_authorization(
+                            user_id=user_id,
+                            action_description=action_label,
+                            file_name=file_name,
+                            data_category=data_category,
+                        )
+                        _audit_log(session_id, "ciba_approved", {"file": file_name})
+                        await cl.Message(
+                            content=f"✅ **Authorization approved.** Proceeding with {action_label} `{file_name}`.",
+                            author="Amanat",
+                        ).send()
+                    except PermissionError:
+                        _audit_log(session_id, "ciba_denied", {"file": file_name})
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": json.dumps({"status": "denied", "message": "User denied CIBA authorization."}),
+                        })
+                        await cl.Message(
+                            content=f"🚫 **Authorization denied.** {action_label} `{file_name}` was not approved.",
+                            author="Amanat",
+                        ).send()
+                        continue
+                    except (TimeoutError, RuntimeError) as e:
+                        # CIBA not configured or timed out — fall back to in-UI confirm
+                        print(f"[Amanat] CIBA fallback: {e}")
+                        _audit_log(session_id, "ciba_fallback", {"reason": str(e)})
+                        res = await cl.AskActionMessage(
+                            content=f"**Confirm:** {action_label} `{file_name}`? (CIBA unavailable — confirming in-UI)",
+                            actions=[
+                                cl.Action(name="confirm", payload={"value": "yes"}, label="Yes, proceed"),
+                                cl.Action(name="cancel", payload={"value": "no"}, label="Cancel"),
+                            ],
+                            timeout=120,
+                        ).send()
+                        if not res or res.get("payload", {}).get("value") != "yes":
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": json.dumps({"status": "cancelled", "message": "User cancelled."}),
+                            })
+                            continue
+                else:
+                    # Standard file or demo mode — use in-UI confirmation
+                    res = await cl.AskActionMessage(
+                        content=f"**Confirm:** {action_label} `{file_name}`?",
+                        actions=[
+                            cl.Action(name="confirm", payload={"value": "yes"}, label="Yes, proceed"),
+                            cl.Action(name="cancel", payload={"value": "no"}, label="Cancel"),
+                        ],
+                        timeout=120,
+                    ).send()
+
+                    if not res or res.get("payload", {}).get("value") != "yes":
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": json.dumps({"status": "cancelled", "message": "User cancelled this action."}),
+                        })
+                        continue
 
             # Add task to task list
             step_name = _friendly_step_name(fn_name, fn_args)

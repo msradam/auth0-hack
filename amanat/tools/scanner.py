@@ -434,6 +434,12 @@ def execute_tool(tool_name: str, args: dict, access_token: str | None = None) ->
         )
     elif tool_name == "check_consent":
         return _check_consent(args.get("file_id", ""), args.get("service", "onedrive"))
+    elif tool_name == "parse_document":
+        from amanat.tools.docling_tool import parse_and_scan_document
+        return parse_and_scan_document(
+            args.get("file_path", ""),
+            use_vlm=args.get("use_vlm", False),
+        )
     else:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
 

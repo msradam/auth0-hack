@@ -1,3 +1,7 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--ignore=tests/test_live_integrations.py"
+
 [project]
 name = "amanat"
 version = "0.1.0"
@@ -5,9 +9,11 @@ description = "Privacy-first data governance agent for humanitarian NGOs, powere
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "auth0-ai>=1.0.2",
     "beeai-framework>=0.1.79",
     "chainlit>=2.10.0",
-"httpx>=0.28.1",
+    "docling>=2.84.0",
+    "httpx>=0.28.1",
     "openai>=2.30.0",
     "pandas>=3.0.1",
     "plotly>=6.6.0",
