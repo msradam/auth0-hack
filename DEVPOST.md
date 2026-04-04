@@ -108,7 +108,7 @@ requested_token_type=http://auth0.com/oauth/token-type/federated-connection-acce
 connection=microsoft-graph
 ```
 
-The agent calls Microsoft Graph and Slack APIs on behalf of the user without ever storing raw service credentials. Token expiry is tracked via `TokenInfo.is_expired()` with a 60-second buffer, triggering automatic re-exchange.
+The agent calls Microsoft Graph and Slack APIs on behalf of the user without ever storing raw service credentials. Token expiry is tracked via `TokenInfo.is_expired()` with a 60-second buffer, triggering automatic re-exchange. A single Multi-Resource Refresh Token (MRRT) works across both the My Account API and all connected services, so one refresh token handles service discovery and token exchange for every provider.
 
 Per-service scoping:
 
@@ -263,6 +263,12 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 **Hybrid approaches beat pure approaches.** PII detection (regex + LLM beats either alone) and policy retrieval (BM25 + document preprocessing beats keyword search) both pointed the same direction. Combining specialized approaches kept outperforming any single method at every layer.
 
 **Agent authorization needs a consent model, not just an auth model.** The hardest design question wasn't "how do I get a token" -- Token Vault handles that. It was "when should the agent be allowed to act?" Scanning is read-only, fine. But revoking a sharing link on a GBV file is a destructive action with real consequences. The pattern I landed on: the agent can scan and report freely, but any destructive action requires an explicit in-UI confirmation. The user stays in control of what the agent does with the access they granted. This feels like a pattern every agent framework should adopt.
+
+## Why This Matters Beyond the Demo
+
+Enterprise data loss prevention tools (Varonis, Microsoft Purview, Symantec DLP) cost $5,000 to $50,000 per year and require dedicated security teams to configure. They're built for corporations, not field offices. Amanat is free, open-source, runs on a laptop, and is grounded in the specific policy frameworks humanitarian organizations already follow (ICRC, IASC, Sphere, GDPR). The entire stack is containerizable for offline deployment in connectivity-constrained environments -- exactly where humanitarian field teams operate.
+
+Most AI agent projects connect to cloud services to send emails or schedule meetings. Amanat connects to cloud services to find data that could get someone killed, and then fixes it. The Token Vault integration isn't a demo convenience -- it's the mechanism that lets the agent act on real files across real services with real consequences, while keeping credential management out of the agent's hands entirely.
 
 ## What's Next for Amanat
 
