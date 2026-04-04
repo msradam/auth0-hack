@@ -316,7 +316,7 @@ The New Humanitarian. (2021). Rohingya data protection and the UN's betrayal. ht
 
 ---
 
-## Blog Post: Token Vault Is the Missing Auth Layer for AI Agents
+## Bonus Blog Post: Token Vault Is the Missing Auth Layer for AI Agents
 
 Every AI agent tutorial solves the same problem wrong. The agent needs to call three APIs on behalf of a user. So the developer stores three sets of OAuth tokens in a database, writes refresh logic for each provider, and hopes nothing expires at 2 AM.
 
