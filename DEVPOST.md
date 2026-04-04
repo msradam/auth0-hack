@@ -199,31 +199,22 @@ Integration: when the OneDrive scanner downloads a binary document format (PDF, 
 
 ### Agent Architecture
 
-```
-+--------------+    +---------------------+    +-----------------+
-|  Chainlit    |    |       Auth0         |    | IBM Granite 4   |
-|  Web UI      |    |  Universal Login    |    | Micro (local)   |
-|              |    |  Token Vault        |    | llama-server    |
-|  OAuth       |    |  Guardian MFA       |    | port 8080       |
-|  Steps       |    +----------+----------+    +--------+--------+
-|  Charts      |               |                        |
-|  Confirm     |    federated access tokens              |
-+------+-------+               |                        |
-       |            +----------v----------+              |
-       +----------->|      Amanat        |<-------------+
-                    |                     |
-                    | Strands Agents SDK  |    +-----------------+
-                    | Regex PII detector  |    | IBM Docling     |
-                    | LLM PII detector    |<-->| granite-258M    |
-                    | Policy RAG (BM25)   |    | OCR + tables    |
-                    | Rules engine        |    +-----------------+
-                    +----------+----------+
-                               |
-                    +----------+----------+
-                    |          |          |
-                    v          v          v
-                 OneDrive   Outlook    Slack
-```
+**Runtime pipeline:**
+
+User Query → Chainlit Web UI → Strands Agent (Granite 4 Micro, local) → Tool Selection → API Calls via Token Vault → Result + Charts
+
+**Components:**
+
+| Layer | Component | Role |
+|-------|-----------|------|
+| **UI** | Chainlit | OAuth login, chat, tool steps, confirmation dialogs, charts |
+| **Auth** | Auth0 Universal Login + Token Vault + Guardian MFA | Identity, federated token exchange, per-service consent |
+| **Agent** | Strands Agents SDK | Function-calling loop with BeforeToolCall/AfterToolCall hooks |
+| **LLM** | IBM Granite 4 Micro via llama-server (local, port 8080) | Tool routing, contextual PII detection, policy analysis |
+| **PII** | Regex (structural) + Granite Micro (contextual) | Hybrid two-layer detection |
+| **Policy** | BM25 over 1,059 Docling-extracted chunks | RAG grounding from ICRC/IASC/GDPR/Sphere PDFs |
+| **OCR** | IBM Docling + granite-docling-258M | Scanned PDF/DOCX text extraction |
+| **APIs** | Microsoft Graph, Slack Web API | OneDrive files, Outlook email, Slack messages |
 
 ## Challenges I Ran Into
 
