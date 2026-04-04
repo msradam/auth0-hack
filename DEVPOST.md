@@ -334,6 +334,10 @@ The pattern generalizes beyond humanitarian data. Any AI agent that touches mult
 
 ---
 
+## Demo Video
+
+The 3-minute demo video shows Amanat running locally against my personal Microsoft 365 and Slack accounts, connected via Auth0 Token Vault. The OneDrive folders, Outlook inbox, and Slack workspace shown in the video are real accounts populated with synthetic humanitarian data from the Waqwaq scenario. All scans, remediations, and alerts execute live against the Microsoft Graph and Slack APIs. The video is sped up in places to fit the 3-minute window.
+
 ## Built With
 
 - auth0-token-vault
