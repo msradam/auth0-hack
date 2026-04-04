@@ -12,6 +12,20 @@ Amanat connects to your OneDrive, Slack, and Outlook through Auth0 Token Vault, 
 
 The 3-minute demo video shows Amanat running locally against my personal Microsoft 365 and Slack accounts, connected via Auth0 Token Vault. The OneDrive folders, Outlook inbox, and Slack workspace shown in the video are real accounts populated with synthetic humanitarian data from the Waqwaq scenario. All scans, remediations, and alerts execute live against the Microsoft Graph and Slack APIs. The video is sped up in places to fit the 3-minute window.
 
+## Screenshots
+
+![Auth0 Universal Login with Guardian MFA](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/01_auth0_login.png)
+
+![Outlook scan finds PII violations, sends alert emails](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/02_outlook_scan_email_alert.png)
+
+![Slack scan summary with affected channels](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/03_slack_scan_summary.png)
+
+![Revoke sharing on GBV files with confirmation dialog](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/09_revoke_sharing_gbv.png)
+
+![PII redaction results — 47 instances across 6 categories](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/05_redaction_result.png)
+
+![Policy RAG citing ICRC Handbook chapters](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/08_policy_rag_icrc.png)
+
 ## Published App
 
 The published app at https://amanat-production.up.railway.app runs in demo mode. Auth0 login works, but tools return synthetic data rather than calling live APIs. This is because the full experience requires the user's own OneDrive, Slack, and Outlook accounts connected via Token Vault, which cannot be shared publicly. The demo mode shows the full agent workflow (scanning, PII detection, policy citations, remediation confirmation) using the same Waqwaq scenario data from the video. To run Amanat against live services, clone the repo and follow the setup instructions in the README.
@@ -120,6 +134,8 @@ Per-service scoping:
 | Outlook | `microsoft-graph` | `Mail.Read`, `Mail.Send`, `offline_access` |
 | Slack (read) | `sign-in-with-slack` | `channels:read`, `channels:history`, `search:read` |
 | Slack (write) | Bot token | `chat:write` (separate credential, posts as "Amanat") |
+
+I chose Refresh Token Exchange over Privileged Worker Exchange deliberately: Amanat always acts with the user present in the chat session, never async. The user watches each tool call happen, sees the results, and approves destructive actions in real time. A Privileged Worker flow (where the backend acts without a user session) would be appropriate for scheduled compliance scans, but for an interactive agent handling GBV files, I wanted the human in the loop at all times.
 
 #### Remediation Confirmation
 
@@ -236,8 +252,6 @@ The Chainlit chat interface was chosen because data governance is a conversation
 Solution: separate read and write credentials. Token Vault handles read operations (scanning messages via user token). A separate Slack bot token handles write operations (posting data protection alerts). Turns out, the separation is actually the right architecture anyway: data protection alerts should come from the bot identity, not impersonate the user.
 
 **Token rotation and cache staleness**: Slack's token rotation meant Token Vault would return revoked tokens after I invalidated them during debugging. The stored Connected Account had to be deleted via the Management API (`DELETE /api/v2/users/{id}/connected-accounts/{cac_id}`) and refresh tokens flushed (`DELETE /api/v2/users/{id}/refresh-tokens`) to force a full re-authentication.
-
-**BeeAI to Strands migration**: I initially used BeeAI Framework's `ReActAgent`, which implements text-based ReAct parsing where the model must output structured `Thought:` / `Action:` / `Observation:` lines. Granite via llama-server uses the OpenAI function-calling protocol (tool calls in the response message, not text prefixes). I migrated to Strands Agents SDK, which provides `BeforeToolCallEvent` hooks for confirmation dialog interception and Chainlit UI integration. The error message (`LinePrefixParserError: Nothing valid has been parsed yet!`) was clear once I understood the distinction.
 
 **Granite Micro and vague queries**: A 3B parameter model requires explicit tool-routing instructions. "Scan everything" would sometimes fail to call the right tools or call the wrong ones. I added explicit routing rules to the system prompt (`scan_files` for OneDrive, `search_messages` for Slack/Outlook) and query expansion for common shorthand ("check all my files" → detailed scan instruction).
 
