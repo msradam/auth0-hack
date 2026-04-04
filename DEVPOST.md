@@ -2,7 +2,7 @@
 
 Author: Adam Munawar Rahman, April 2026
 
-Amanat scans an NGO's connected cloud services (OneDrive, Slack, Outlook) for sensitive beneficiary data that may be overshared, improperly stored, or exposed, then helps fix it. All analysis runs locally via IBM Granite 4 Micro. Beneficiary data never leaves the user's machine.
+Amanat connects to your OneDrive, Slack, and Outlook through Auth0 Token Vault, scans for sensitive beneficiary data that's been overshared or exposed, and helps fix it. All analysis runs locally via IBM Granite 4 Micro. Beneficiary data never leaves your machine.
 
 *Amanat* (Arabic: trust, stewardship), the concept that what is entrusted to you must be protected and returned faithfully.
 
@@ -22,19 +22,19 @@ The published app at https://amanat-production.up.railway.app runs in demo mode.
 
 In 2021, UNHCR collected biometric data (fingerprints and iris scans) from 830,000 Rohingya refugees in Bangladesh. The refugees were told registration was required to receive food. What they weren't told was that their data would be shared with the Myanmar government, the very regime they had fled. Some discovered their names on Myanmar's repatriation lists. Biometric data is immutable. Once shared, it can never be taken back (Human Rights Watch, 2021).
 
-This wasn't a hack. It was a governance failure.
+Nobody hacked UNHCR. The data was shared through internal processes, on shared drives, with default settings that nobody reviewed. A governance failure.
 
-The UNHCR-Bangladesh exercise violated the agency's own data protection policy, which requires UNHCR to tell people in a language and manner they understand why their data is being collected and whether it will be transferred to another entity. Of 24 refugees interviewed by HRW, all but one said they were not informed of potential data sharing with Myanmar. UNHCR did not carry out a data impact assessment, breaching its own policies (HRW, 2021).
+UNHCR's own data protection policy requires telling people, in a language they understand, why their data is being collected and whether it will be transferred. Of 24 refugees HRW interviewed, all but one said they were never informed of potential data sharing with Myanmar. UNHCR never carried out a data impact assessment, breaching its own rules (HRW, 2021).
 
-The pattern repeats. In 2016, the UN's Office of Internal Oversight Services found that three of five UNHCR missions investigated had shared refugees' personal data with host governments without assessing the data protection offered by those governments or establishing transfer agreements (OIOS, 2016). In 2022, the Red Cross Family Links Network suffered a data breach affecting vulnerable populations (ICRC, 2022).
+This keeps happening. In 2016, the UN's Office of Internal Oversight Services found that three of five UNHCR missions they investigated had shared refugees' personal data with host governments without assessing data protection or establishing transfer agreements (OIOS, 2016). In 2022, the Red Cross Family Links Network suffered a breach affecting vulnerable populations (ICRC, 2022).
 
-Humanitarian organizations handle some of the most sensitive data in the world: refugee case files, GBV incident reports, biometric enrollment logs, medical records of displaced persons. Yet field teams routinely store this data on cloud services with default sharing settings. A GBV report shared with "anyone with the link." Case numbers posted in public Slack channels. Beneficiary names and HIV status in a donor report email.
+Humanitarian organizations handle refugee case files, GBV incident reports, biometric enrollment logs, medical records of displaced persons. And field teams routinely store this data on cloud services with default sharing settings. A GBV report shared with "anyone with the link." Case numbers posted in public Slack channels. Beneficiary names and HIV status in a donor report email.
 
 > "The Data of the Most Vulnerable People is the Least Protected" — Human Rights Watch, 2023
 
-The ICRC published a 400-page Handbook on Data Protection in Humanitarian Action (2nd ed., 2020). The IASC published Operational Guidance on Data Responsibility (2023). The Sphere Standards include Protection Principles for sensitive information handling. But there is no tool that actually enforces these standards across the cloud services field teams use daily. The policy layer exists. The enforcement layer does not.
+The ICRC published a 400-page Handbook on Data Protection in Humanitarian Action (2nd ed., 2020). The IASC published Operational Guidance on Data Responsibility (2023). The Sphere Standards include Protection Principles for sensitive information handling. The policy documents exist. What doesn't exist is software that enforces them across the cloud services field teams actually use every day.
 
-Amanat fills this gap.
+I built Amanat to fill that gap.
 
 ## What It Does
 
@@ -224,7 +224,7 @@ User Query → Chainlit Web UI → Strands Agent (Granite 4 Micro, local) → To
 
 **Slack OAuth v2 + Auth0 generic oauth2 strategy**: Slack's v2 OAuth uses `user_scope` as a separate parameter from `scope`, but Auth0's generic oauth2 connection strategy only sends `scope` in the authorization URL. I could not get write scopes (`chat:write`, `files:write`) through Token Vault regardless of the connection configuration.
 
-Solution: separate read and write credentials. Token Vault handles read operations (scanning messages via user token). A separate Slack bot token handles write operations (posting data protection alerts). In practice, the separation is architecturally correct: data protection alerts should come from the bot identity, not impersonate the user.
+Solution: separate read and write credentials. Token Vault handles read operations (scanning messages via user token). A separate Slack bot token handles write operations (posting data protection alerts). Turns out, the separation is actually the right architecture anyway: data protection alerts should come from the bot identity, not impersonate the user.
 
 **Token rotation and cache staleness**: Slack's token rotation meant Token Vault would return revoked tokens after I invalidated them during debugging. The stored Connected Account had to be deleted via the Management API (`DELETE /api/v2/users/{id}/connected-accounts/{cac_id}`) and refresh tokens flushed (`DELETE /api/v2/users/{id}/refresh-tokens`) to force a full re-authentication.
 
@@ -232,7 +232,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Granite Micro and vague queries**: A 3B parameter model requires explicit tool-routing instructions. "Scan everything" would sometimes fail to call the right tools or call the wrong ones. I added explicit routing rules to the system prompt (`scan_files` for OneDrive, `search_messages` for Slack/Outlook) and query expansion for common shorthand ("check all my files" → detailed scan instruction).
 
-**PII detection for non-Latin scripts**: The initial regex pattern `\b[A-Z][a-z]+ [A-Z][a-z]+\b` catches English-style names but misses Arabic names (محمد), Bengali names (মোহাম্মদ), and Burmese names, the very populations humanitarian organizations serve. Research into the RECAP paper (2025) led me to implement the hybrid regex + LLM architecture, where the LLM handles multilingual and contextual PII that regex cannot express.
+**PII detection for non-Latin scripts**: The initial regex pattern `\b[A-Z][a-z]+ [A-Z][a-z]+\b` catches English-style names but misses Arabic names (محمد), Bengali names (মোহাম্মদ), and Burmese names, exactly the populations humanitarian organizations serve. Reading the RECAP paper (2025) led me to implement the hybrid regex + LLM architecture, where the LLM handles multilingual and contextual PII that regex cannot express.
 
 ## Accomplishments I'm Proud Of
 
@@ -240,7 +240,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Fully local AI.** No beneficiary data ever touches a cloud LLM API. Granite 4 Micro runs on a laptop via llama-server. The entire stack (LLM, document parser, PII detector, policy database) is containerizable for offline field deployment. I built a Containerfile that proves it.
 
-**PII never reaches the LLM.** Tool results are redacted before being returned to the agent. Granite sees `[NAME REDACTED]` and `[CASE# REDACTED]`, never raw beneficiary data. The unredacted data is only shown in the Chainlit UI steps, visible to the authenticated user. A defense-in-depth measure against prompt injection and model memorization.
+**PII never reaches the LLM.** Tool results are redacted before being returned to the agent. Granite sees `[NAME REDACTED]` and `[CASE# REDACTED]`, never raw beneficiary data. The unredacted data only shows up in the Chainlit UI steps, visible to the authenticated user. Even if someone managed a prompt injection attack, there's no PII in context for the model to leak.
 
 **Real policy grounding.** I downloaded the actual ICRC Handbook (400+ pages), IASC Operational Guidance, GDPR full text, and Sphere Handbook as PDFs. Docling extracted 1,059 text chunks. BM25 retrieves the relevant sections at query time. The agent cites "ICRC Handbook Chapter 8.2.1" because it read Chapter 8.2.1, not because it hallucinated a citation.
 
@@ -252,11 +252,11 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Auth0 Token Vault is the right abstraction for multi-service AI agents.** The federated token exchange pattern (one authentication event, per-service scoped tokens, automatic refresh, user-controlled consent) maps directly to what an agentic system requires. Users connect and disconnect services individually. The agent never stores raw credentials. Token expiry is handled transparently. All AI agents should handle multi-service access this way.
 
-**Small models are sufficient when tools are deterministic.** Granite 4 Micro (3B params) reliably handles tool routing, policy analysis, and report generation. The key architectural insight: don't ask the LLM to detect PII (it will hallucinate). Use deterministic regex for structural patterns and the LLM only for contextual extraction where it adds value. The LLM reasons about findings; the scanner produces them.
+**Small models are sufficient when tools are deterministic.** Granite 4 Micro (3B params) reliably handles tool routing, policy analysis, and report generation. The thing I kept running into: if you ask the LLM to detect PII directly, it hallucinates. Deterministic regex for structural patterns, LLM only for contextual extraction where it actually adds value. Let the LLM reason about findings, let the scanner produce them.
 
-**Humanitarian data governance is a software gap, not a policy gap.** The ICRC published a handbook. The IASC published operational guidance. The Sphere Standards include protection principles. The policies exist. What doesn't exist is software that enforces them across the cloud services field teams actually use. Amanat attempts to bridge that gap.
+**Humanitarian data governance is a software problem, not a policy problem.** The ICRC published a handbook. The IASC published operational guidance. The Sphere Standards include protection principles. All the policy documents are there. Nobody has built software that enforces them across the cloud services field teams actually use.
 
-**Hybrid approaches beat pure approaches.** PII detection (regex + LLM beats either alone) and policy retrieval (BM25 + document preprocessing beats keyword search) both showed the same result. At every layer, combining specialized approaches outperformed any single method.
+**Hybrid approaches beat pure approaches.** PII detection (regex + LLM beats either alone) and policy retrieval (BM25 + document preprocessing beats keyword search) both pointed the same direction. Combining specialized approaches kept outperforming any single method at every layer.
 
 ## What's Next for Amanat
 
