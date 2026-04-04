@@ -38,7 +38,7 @@ I built Amanat to fill that gap.
 
 ## What It Does
 
-Amanat is an AI agent that connects to an NGO's cloud services via Auth0 Token Vault, scans for sensitive data exposure, evaluates findings against humanitarian data protection standards, and takes remediation actions. All beneficiary data stays local.
+You log in through Auth0, connect your OneDrive, Slack, and Outlook via Token Vault, and tell the agent what to look for. It scans your files, messages, and emails for PII, checks what's publicly shared, cites the relevant ICRC or GDPR section, and can revoke sharing links or redact files on the spot. The entire analysis runs on a local LLM -- beneficiary data never leaves your machine.
 
 ### Capabilities
 
@@ -97,7 +97,7 @@ Demo files across OneDrive (`/WRA Operations/`):
 
 #### Token Vault (Connected Accounts)
 
-The core integration. Users authenticate once via Auth0 Universal Login, then connect each external service through individual Connected Accounts OAuth flows. Amanat exchanges Auth0 refresh tokens for service-specific access tokens via federated token exchange:
+This is the part I'm most pleased with. The user authenticates once via Auth0 Universal Login, then connects each service separately through Connected Accounts. Each connection is its own OAuth consent screen -- the user sees exactly which permissions they're granting, and they can disconnect any service independently. Amanat exchanges Auth0 refresh tokens for service-specific access tokens via federated token exchange:
 
 ```
 POST /oauth/token
@@ -220,6 +220,10 @@ User Query → Chainlit Web UI → Strands Agent (Granite 4 Micro, local) → To
 | **OCR** | IBM Docling + granite-docling-258M | Scanned PDF/DOCX text extraction |
 | **APIs** | Microsoft Graph, Slack Web API | OneDrive files, Outlook email, Slack messages |
 
+### UI Design
+
+The Chainlit chat interface was chosen because data governance is a conversation, not a dashboard. A protection officer doesn't want to click through 15 tabs -- they want to say "scan the Protection folder" and see results inline. Each tool call shows as a collapsible Step in the chat, so the user can see exactly what the agent did (which API it called, what it found) without the results cluttering the main conversation. Scan results render as interactive Plotly charts -- risk distribution by file, PII types found, sharing status breakdown. The confirmation dialog for destructive actions (revoke sharing, delete files) is a prominent Approve/Deny button pair that blocks the agent until the user responds. No "are you sure?" buried in a chat message -- a distinct UI element that demands a deliberate click.
+
 ## Challenges I Ran Into
 
 **Slack OAuth v2 + Auth0 generic oauth2 strategy**: Slack's v2 OAuth uses `user_scope` as a separate parameter from `scope`, but Auth0's generic oauth2 connection strategy only sends `scope` in the authorization URL. I could not get write scopes (`chat:write`, `files:write`) through Token Vault regardless of the connection configuration.
@@ -236,7 +240,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 ## Accomplishments I'm Proud Of
 
-**The Rohingya scenario could have been prevented by this tool.** If UNHCR field staff had Amanat scanning their shared drives, it would have flagged the biometric enrollment data as publicly accessible special-category data, cited ICRC Handbook Chapter 8 and GDPR Article 9, and required explicit confirmation before any destructive remediation. The demo shows this with the Waqwaq scenario.
+**The Rohingya scenario could have been caught by this tool.** If UNHCR field staff had something like Amanat scanning their shared drives, it would have flagged the biometric enrollment data as publicly accessible special-category data, cited ICRC Handbook Chapter 8 and GDPR Article 9, and required explicit confirmation before any sharing changes. The demo shows exactly this with the Waqwaq scenario.
 
 **Fully local AI.** No beneficiary data ever touches a cloud LLM API. Granite 4 Micro runs on a laptop via llama-server. The entire stack (LLM, document parser, PII detector, policy database) is containerizable for offline field deployment. I built a Containerfile that proves it.
 
@@ -257,6 +261,8 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 **Humanitarian data governance is a software problem, not a policy problem.** The ICRC published a handbook. The IASC published operational guidance. The Sphere Standards include protection principles. All the policy documents are there. Nobody has built software that enforces them across the cloud services field teams actually use.
 
 **Hybrid approaches beat pure approaches.** PII detection (regex + LLM beats either alone) and policy retrieval (BM25 + document preprocessing beats keyword search) both pointed the same direction. Combining specialized approaches kept outperforming any single method at every layer.
+
+**Agent authorization needs a consent model, not just an auth model.** The hardest design question wasn't "how do I get a token" -- Token Vault handles that. It was "when should the agent be allowed to act?" Scanning is read-only, fine. But revoking a sharing link on a GBV file is a destructive action with real consequences. The pattern I landed on: the agent can scan and report freely, but any destructive action requires an explicit in-UI confirmation. The user stays in control of what the agent does with the access they granted. This feels like a pattern every agent framework should adopt.
 
 ## What's Next for Amanat
 
