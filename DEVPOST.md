@@ -162,9 +162,9 @@ Example: the query "Can we share biometric data with host governments?" retrieve
 
 ### IBM Granite 4 Micro
 
-Granite 4.0 Micro is a 3B-parameter hybrid Mamba-Transformer model designed for edge deployment (IBM, 2025). Key properties for our use case:
+Granite 4.0 Micro is a 3B-parameter dense transformer model designed for edge deployment (IBM, 2025). Key properties for our use case:
 
-- **70% less memory** than comparable transformer-only models due to Mamba-2 linear attention layers
+- **Small footprint**: 3B parameters run comfortably on consumer hardware via llama.cpp quantization
 - **Native function calling** with structured JSON output. The agent loop is driven by Strands Agents SDK, which provides native tool-call lifecycle hooks (BeforeToolCallEvent, AfterToolCallEvent) for Chainlit UI integration and confirmation dialog interception.
 - **Multilingual**: English, Arabic, French, Spanish, Japanese, Korean, Chinese, and 5 other languages, which is critical for humanitarian contexts
 - **128K validated context** with 512K training length, sufficient for large policy documents and scan results
@@ -309,6 +309,30 @@ Sphere Association. (2018). The Sphere Handbook (4th ed.). https://spherestandar
 An Evaluation Study of Hybrid Methods for Multilingual PII Detection. (2025). https://arxiv.org/html/2510.07551v1
 
 The New Humanitarian. (2021). Rohingya data protection and the UN's betrayal. https://www.thenewhumanitarian.org/opinion/2021/6/21/rohingya-data-protection-and-UN-betrayal
+
+---
+
+## Blog Post: Token Vault Is the Missing Auth Layer for AI Agents
+
+Every AI agent tutorial solves the same problem wrong. The agent needs to call three APIs on behalf of a user. So the developer stores three sets of OAuth tokens in a database, writes refresh logic for each provider, and hopes nothing expires at 2 AM.
+
+I built Amanat, a data governance agent that scans OneDrive, Slack, and Outlook for sensitive humanitarian data. The agent needs to read files from Microsoft Graph, search Slack messages, scan Outlook emails, and then take action: revoke sharing links, post alerts, send warning emails. That is three OAuth providers, five different scopes, and two token types (user tokens for reading, bot tokens for writing).
+
+Auth0 Token Vault solved the credential management problem I did not want to solve.
+
+**One authentication event, multiple services.** The user logs in once via Auth0 Universal Login. Then they connect each service individually through Connected Accounts. Each connection is a separate OAuth consent screen with its own scopes. The user sees exactly what they are granting. They can disconnect OneDrive without affecting Slack.
+
+**Federated token exchange instead of token storage.** When Amanat needs a Microsoft Graph token, it sends a single POST to Auth0's token endpoint with the user's refresh token and `connection=microsoft-graph`. Auth0 returns a scoped access token. Amanat never stores raw service credentials. If a token expires mid-scan, the exchange runs again transparently. The grant type (`urn:auth0:params:oauth:grant-type:token-exchange:federated-connection-access-token`) is verbose, but it encapsulates the entire token lifecycle.
+
+**Per-service isolation.** This was the property I did not appreciate until I needed it. Early in development, I had a single `access_token` variable that I passed to every tool. The OneDrive token got sent to the Slack API. Slack returned `invalid_auth`. The fix was obvious once I saw it: Token Vault already scopes tokens per connection. I built a `_service_tokens` dictionary that maps `{"onedrive": "...", "slack": "...", "outlook": "..."}` and each tool picks its own token. The OneDrive token physically cannot touch the Slack API. For an agent handling refugee biometric data, that isolation is not a nice-to-have.
+
+**The My Account API pattern.** Token Vault uses a My Account API (`https://{domain}/me/`) with `read:connected_accounts` and `create:connected_account_tokens` scopes. The agent can check which services are connected before attempting a scan, and prompt the user to connect missing services. The MRRT (Multi-Resource Refresh Token) flow means one refresh token works across the My Account API and all connected services.
+
+**What I would tell another agent developer:** do not build token management yourself. The refresh logic, the expiry handling, the per-service scoping, the user consent UI, the disconnect flow, the token rotation, all of it is infrastructure that Token Vault handles and that you will get wrong if you implement it from scratch. I spent my time on PII detection and policy grounding instead of writing a token database. That was the right trade.
+
+The pattern generalizes beyond humanitarian data. Any AI agent that touches multiple services on behalf of a user (CRM + email + calendar, or cloud storage + messaging + analytics) faces the same multi-provider OAuth problem. Token Vault's federated exchange is the correct abstraction: one identity provider, per-service consent, scoped tokens, automatic refresh, user-controlled disconnect. Build your agent logic. Let Auth0 handle the credentials.
+
+---
 
 ## Built With
 
