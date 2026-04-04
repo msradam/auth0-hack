@@ -1,6 +1,6 @@
 # Amanat — Humanitarian Data Governance Agent
 
-**Your data is our amanat.** A privacy-first AI agent that helps humanitarian NGOs find and fix sensitive data exposure across cloud services.
+A privacy-first AI agent that helps humanitarian NGOs find and fix sensitive data exposure across cloud services.
 
 Built for the [Auth0 "Authorized to Act" Hackathon](https://auth0.devpost.com/).
 
