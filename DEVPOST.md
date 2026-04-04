@@ -26,13 +26,15 @@ Nobody hacked UNHCR. The data was shared through internal processes, on shared d
 
 UNHCR's own data protection policy requires telling people, in a language they understand, why their data is being collected and whether it will be transferred. Of 24 refugees HRW interviewed, all but one said they were never informed of potential data sharing with Myanmar. UNHCR never carried out a data impact assessment, breaching its own rules (HRW, 2021).
 
-This keeps happening. In 2016, the UN's Office of Internal Oversight Services found that three of five UNHCR missions they investigated had shared refugees' personal data with host governments without assessing data protection or establishing transfer agreements (OIOS, 2016). In 2022, the Red Cross Family Links Network suffered a breach affecting vulnerable populations (ICRC, 2022).
+This keeps happening. In 2016, the UN's Office of Internal Oversight Services found that three of five UNHCR missions they investigated had shared refugees' personal data with host governments without assessing data protection or establishing transfer agreements (OIOS, 2016). In January 2022, attackers exploited an unpatched vulnerability to access personal data of 515,000 people in the ICRC's Restoring Family Links programme -- people separated from families by conflict, migration, and disaster. The attackers were inside for 70 days before anyone noticed. The programme had to be shut down entirely (ICRC, 2022).
 
 Humanitarian organizations handle refugee case files, GBV incident reports, biometric enrollment logs, medical records of displaced persons. And field teams routinely store this data on cloud services with default sharing settings. A GBV report shared with "anyone with the link." Case numbers posted in public Slack channels. Beneficiary names and HIV status in a donor report email.
 
 > "The Data of the Most Vulnerable People is the Least Protected" — Human Rights Watch, 2023
 
-The ICRC published a 400-page Handbook on Data Protection in Humanitarian Action (2nd ed., 2020). The IASC published Operational Guidance on Data Responsibility (2023). The Sphere Standards include Protection Principles for sensitive information handling. The policy documents exist. What doesn't exist is software that enforces them across the cloud services field teams actually use every day.
+The ICRC published a 400-page Handbook on Data Protection in Humanitarian Action (2nd ed., 2020). The IASC published Operational Guidance on Data Responsibility (2023). The Sphere Standards include Protection Principles for sensitive information handling. The policy documents exist. What doesn't exist is software that enforces them.
+
+The tools humanitarian organizations actually use -- KoBoToolbox for data collection, DHIS2 for health data, Microsoft 365 for everything else -- have baseline security (encryption in transit, optional encryption at rest, basic RBAC) but no automated data classification, no sensitivity detection, no cross-platform governance, no policy enforcement. A CyberPeace Institute study found that 41% of NGOs had been attacked in the past three years, only 4% had actionable cybersecurity policies, and 56% had no cybersecurity budget at all (CyberPeace, 2024). A Dalberg/ICRC joint study found fewer than half of humanitarian organizations had data protection policies meeting international standards (ICRC Handbook, 2020).
 
 I built Amanat to fill that gap.
 
@@ -266,7 +268,9 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 ## Why This Matters Beyond the Demo
 
-Enterprise data loss prevention tools (Varonis, Microsoft Purview, Symantec DLP) cost $5,000 to $50,000 per year and require dedicated security teams to configure. They're built for corporations, not field offices. Amanat is free, open-source, runs on a laptop, and is grounded in the specific policy frameworks humanitarian organizations already follow (ICRC, IASC, Sphere, GDPR). The entire stack is containerizable for offline deployment in connectivity-constrained environments -- exactly where humanitarian field teams operate.
+Enterprise DLP tools (Varonis, Microsoft Purview, Symantec DLP) cost $5,000 to $50,000 per year and require dedicated security teams to configure. They're built for corporations, not field offices where 56% of NGOs have no cybersecurity budget and a third have no IT support at all (CyberPeace, 2024). Amanat is free, open-source, runs on a laptop, and is grounded in the specific policy frameworks humanitarian organizations already follow (ICRC, IASC, Sphere, GDPR). The entire stack is containerizable for offline deployment in connectivity-constrained environments -- exactly where humanitarian field teams operate.
+
+UNHCR runs Microsoft 365 across field locations. WFP's SCOPE system holds data on 90 million beneficiaries. These organizations use OneDrive, Outlook, and Slack daily. But none of these platforms have built-in humanitarian data governance -- no automated sensitivity detection, no policy enforcement against ICRC rules, no cross-service visibility into what's been shared and with whom. Amanat sits on top of these existing services via Token Vault and adds the governance layer that's missing.
 
 Most AI agent projects connect to cloud services to send emails or schedule meetings. Amanat connects to cloud services to find data that could get someone killed, and then fixes it. The Token Vault integration isn't a demo convenience -- it's the mechanism that lets the agent act on real files across real services with real consequences, while keeping credential management out of the agent's hands entirely.
 
@@ -325,6 +329,10 @@ Sphere Association. (2018). The Sphere Handbook (4th ed.). https://spherestandar
 An Evaluation Study of Hybrid Methods for Multilingual PII Detection. (2025). https://arxiv.org/html/2510.07551v1
 
 The New Humanitarian. (2021). Rohingya data protection and the UN's betrayal. https://www.thenewhumanitarian.org/opinion/2021/6/21/rohingya-data-protection-and-UN-betrayal
+
+CyberPeace Institute. (2024). NGOs at Risk in International Geneva. https://geneva.cyberpeace.ngo/
+
+Dalberg/ICRC. (2020). Referenced in ICRC Handbook on Data Protection in Humanitarian Action, 2nd edition.
 
 ---
 
