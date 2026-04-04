@@ -69,6 +69,10 @@ def search_outlook_messages(access_token: str, query: str) -> str:
         resp = httpx.get(url, headers=_headers(access_token), params=params, timeout=30)
         resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 403:
+            return json.dumps({
+                "error": "Outlook access denied. Reconnect Microsoft with Mail.Read permissions via the Connect Microsoft link on the welcome screen.",
+            }, indent=2)
         return json.dumps({
             "error": f"Graph API error: {exc.response.status_code} {exc.response.text[:300]}",
         }, indent=2)
@@ -128,15 +132,19 @@ def search_outlook_messages(access_token: str, query: str) -> str:
         f"{with_violations} have policy violations.",
         "",
     ]
+    violating_contacts = set()
     for r in results:
         subject = r.get("subject", "(no subject)")
         sender = r.get("from", "unknown")
+        recipient = r.get("to", "unknown")
         violations = r.get("violations", [])
         pii_types = ", ".join(r.get("pii_types", [])) or "none"
         ext_flag = " [EXTERNAL]" if r.get("external_recipient") else ""
 
-        lines.append(f"EMAIL: {subject} from {sender}{ext_flag} | PII: {pii_types}")
+        lines.append(f"EMAIL: {subject} | from: {sender} | to: {recipient}{ext_flag} | PII: {pii_types}")
         if violations:
+            violating_contacts.add(sender)
+            violating_contacts.add(recipient)
             for v in violations:
                 lines.append(
                     f"  - {v['severity'].upper()}: {v['rule_name']}. "
@@ -144,6 +152,10 @@ def search_outlook_messages(access_token: str, query: str) -> str:
                     f"Action: {v['action']}"
                 )
         lines.append("")
+
+    if violating_contacts:
+        lines.append(f"CONTACTS TO ALERT: {', '.join(violating_contacts)}")
+        lines.append("Send alert emails using: send_email(to=\"ADDRESS\", subject=\"Data Protection Alert\", body=\"...\")")
 
     lines.append("\n---JSON---")
     lines.append(json.dumps({
@@ -260,3 +272,24 @@ def scan_outlook_recent(access_token: str, days: int = 30) -> str:
         "results": results,
     }))
     return "\n".join(lines)
+
+
+def send_outlook_email(access_token: str, to: str, subject: str, body: str) -> str:
+    """Send an email via Microsoft Graph API."""
+    resp = httpx.post(
+        f"{GRAPH_BASE}/me/sendMail",
+        headers=_headers(access_token) | {"Content-Type": "application/json"},
+        json={
+            "message": {
+                "subject": subject,
+                "body": {"contentType": "Text", "content": body},
+                "toRecipients": [{"emailAddress": {"address": to}}],
+            }
+        },
+        timeout=15,
+    )
+    if resp.status_code == 202:
+        return json.dumps({"status": "success", "to": to, "subject": subject,
+                           "message": f"Email sent to {to}."})
+    return json.dumps({"status": "error", "code": resp.status_code,
+                       "message": f"Failed to send: {resp.text[:200]}"})

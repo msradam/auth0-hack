@@ -15,7 +15,11 @@ def _run(name: str, **kwargs) -> StringToolOutput:
     result = execute_tool(name, kwargs, access_token=_get_token())
     # Strip JSON blob — LLM gets text only
     text = result.split("\n---JSON---")[0] if "---JSON---" in result else result
-    return StringToolOutput(text)
+    # Redact PII before sending to LLM — the LLM gets sanitized summaries,
+    # not raw beneficiary data. PII details are shown in Chainlit UI steps only.
+    from amanat.tools.scanner import redact_pii_in_text
+    redacted_text, _ = redact_pii_in_text(text)
+    return StringToolOutput(redacted_text)
 
 
 # Access token is set at runtime by the Chainlit app or test harness
@@ -206,6 +210,21 @@ def parse_document(file_path: str) -> StringToolOutput:
     return StringToolOutput(text)
 
 
+@tool
+def notify_channel(channel: str, pii_summary: str, service: str) -> StringToolOutput:
+    """REMEDIATION: Post a data protection alert to a Slack channel after
+    detecting PII in messages. The alert warns the team about exposed sensitive
+    data and recommends actions (delete messages, move to restricted channel).
+    Use this after scanning Slack and finding PII violations.
+
+    Args:
+        channel: The Slack channel ID to post the alert to (e.g. "C0APFFB1XLJ").
+        pii_summary: Human-readable summary of findings (e.g. "3 beneficiary names, 2 case IDs, 1 medical condition found in 5 messages").
+        service: Which service — "slack".
+    """
+    return _run("notify_channel", channel=channel, pii_summary=pii_summary, service=service)
+
+
 # ── All tools list for agent construction ──────────────────────────────
 
 ALL_TOOLS = [
@@ -221,6 +240,7 @@ ALL_TOOLS = [
     generate_dpia,
     check_consent,
     parse_document,
+    notify_channel,
 ]
 
 

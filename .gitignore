@@ -1,17 +1,37 @@
-# Auth0 secrets
-client_secret
+# Secrets
 .env
 *.env
 !.env.example
+railway_token.yml
+openrouter_api.yml
 *_client.yml
-setup_connections.sh
 
 # Python
 __pycache__/
 *.pyc
 .venv/
 
-# Chainlit
-.files/
+# Runtime
 audit-logs/
-research/Github clientid:
+.files/
+/tmp/
+
+# Build artifacts
+node_modules/
+uv.lock
+
+# Dev workspace
+assets/editing/
+assets/amanat_submission.mp4
+logo_tests/
+research/
+test_results_50.jsonl
+test_results_50_summary.txt
+accountability-icon-*.png
+
+# Large files
+*.gguf
+amanat/knowledge/source_docs/
+
+# OS
+.DS_Store

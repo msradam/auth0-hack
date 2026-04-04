@@ -1,7 +1,7 @@
 """
-End-to-end tests with real Granite 4 Micro via BeeAI Framework.
+End-to-end tests with real Granite 4 Micro via Strands Agents SDK.
 
-Tests the full agent loop: user query → BeeAI RequirementAgent →
+Tests the full agent loop: user query → Strands Agent →
 Granite tool calls → tool execution → Granite synthesis.
 Requires llama-server running locally with Granite 4 Micro GGUF.
 """
@@ -52,7 +52,7 @@ async def main():
 
         ("DPIA generation",
          "Generate a DPIA for our biometric enrollment program that collects "
-         "fingerprints and iris scans for supply distribution verification at Lookout Landing."),
+         "fingerprints and iris scans for supply distribution verification at Kanbaloh."),
 
         ("Consent documentation check",
          "Check the consent status for doc-001 and doc-005."),

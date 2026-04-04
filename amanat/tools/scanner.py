@@ -17,7 +17,7 @@ from amanat.knowledge.rules import evaluate_file
 PII_PATTERNS = {
     "name": {
         "patterns": [
-            r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b",  # First Last
+            r"\b[A-Z][a-z]+\s+(?:al-)?[A-Z][a-z]+\b",  # First Last, First al-Last
         ],
         "severity": "warning",
         "category": "personal_identifier",
@@ -47,6 +47,7 @@ PII_PATTERNS = {
     "unhcr_case_number": {
         "patterns": [
             r"\b\d{3}-\d{2}C\d{5}\b",     # UNHCR format
+            r"\bWAQ-\d{2}C\d{5}\b",      # WRA Waqwaq format
             r"\bUNHCR[-/]\d+\b",
         ],
         "severity": "critical",
@@ -61,7 +62,7 @@ PII_PATTERNS = {
     },
     "ethnic_religious": {
         "patterns": [
-            r"\b(Rohingya|Yazidi|Uyghur|Tutsi|Sunni|Shia|Christian|Muslim|Hindu|Buddhist|Hylian|Zora|Goron|Gerudo|Rito|Sheikah)\b",
+            r"\b(Rohingya|Yazidi|Uyghur|Tutsi|Sunni|Shia|Christian|Muslim|Hindu|Buddhist|Kanbalese|Zenji|Sofali|Vakwan|Ambari|Majali)\b",
         ],
         "severity": "critical",
         "category": "special_category_data",
@@ -83,8 +84,23 @@ PII_PATTERNS = {
 }
 
 
-def detect_pii_in_text(text: str) -> list[dict]:
-    """Scan text for PII patterns. Returns list of findings."""
+def detect_pii_in_text(text: str, use_llm: bool = False) -> list[dict]:
+    """Scan text for PII using hybrid detection (RECAP-inspired).
+
+    Implements the two-layer approach from "An Evaluation Study of Hybrid
+    Methods for Multilingual PII Detection" (2025):
+
+    Layer 1 (Regex): Deterministic pattern matching for structured PII —
+    phone numbers, emails, case IDs, GPS coordinates, medical terms.
+    Fast, no false negatives on known patterns.
+
+    Layer 2 (LLM): Granite 4 Micro extracts contextual/multilingual PII
+    that regex can't catch — names in any script, implicit identifiers,
+    context-dependent sensitive information. Only runs when use_llm=True.
+
+    Results are merged with deduplication.
+    """
+    # --- Layer 1: Regex (structural PII) ---
     findings = []
     for pii_type, config in PII_PATTERNS.items():
         for pattern in config["patterns"]:
@@ -96,9 +112,124 @@ def detect_pii_in_text(text: str) -> list[dict]:
                     "category": config["category"],
                     "severity": config["severity"],
                     "count": len(matches),
-                    "samples": matches[:3],  # Show up to 3 examples
+                    "samples": matches[:3],
+                    "method": "regex",
                 })
+
+    # --- Layer 2: LLM (contextual/multilingual PII) ---
+    if use_llm and len(text.strip()) > 20:
+        llm_findings = _detect_pii_with_llm(text)
+        # Merge: add LLM findings that regex didn't catch
+        regex_types = {f["type"] for f in findings}
+        for lf in llm_findings:
+            if lf["type"] not in regex_types:
+                findings.append(lf)
+            else:
+                # LLM found same type — merge samples if new ones found
+                for rf in findings:
+                    if rf["type"] == lf["type"]:
+                        existing = set(str(s) for s in rf["samples"])
+                        new_samples = [s for s in lf["samples"] if str(s) not in existing]
+                        if new_samples:
+                            rf["samples"].extend(new_samples[:2])
+                            rf["count"] += lf["count"]
+                        break
+
     return findings
+
+
+def _detect_pii_with_llm(text: str) -> list[dict]:
+    """Use Granite 4 Micro to extract PII that regex can't catch.
+
+    Sends a structured extraction prompt and parses the JSON response.
+    Handles names in any script, implicit identifiers, and context-dependent
+    sensitive information.
+    """
+    import os
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return []
+
+    client = OpenAI(
+        base_url=os.environ.get("OPENAI_API_BASE", "http://localhost:8080/v1"),
+        api_key=os.environ.get("OPENAI_API_KEY", "llama"),
+    )
+
+    # Truncate to avoid overwhelming the model
+    excerpt = text[:3000]
+
+    prompt = (
+        "Extract ALL personally identifiable information (PII) from this text. "
+        "Look for:\n"
+        "- Person names (in any language or script)\n"
+        "- Locations that could identify individuals (shelter numbers, block IDs)\n"
+        "- Implicit identifiers ('the woman in Shelter 17', 'the 15-year-old')\n"
+        "- Any information that could be used to identify a specific person\n\n"
+        "Return ONLY valid JSON in this exact format:\n"
+        '{"entities": [{"text": "the exact text", "type": "name|location|implicit_id|age|relationship"}]}\n\n'
+        "If no PII is found, return: {\"entities\": []}\n\n"
+        f"TEXT:\n{excerpt}"
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="granite4-micro",
+            messages=[
+                {"role": "system", "content": "You are a PII detection system. Extract personally identifiable information. Return only JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+            max_tokens=1024,
+        )
+        content = response.choices[0].message.content or ""
+
+        # Parse JSON from response (handle markdown code blocks)
+        if "```" in content:
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        content = content.strip()
+
+        data = json.loads(content)
+        entities = data.get("entities", [])
+
+        # Convert to our standard findings format
+        findings = []
+        type_groups: dict[str, list[str]] = {}
+        for entity in entities:
+            etype = entity.get("type", "unknown")
+            etext = entity.get("text", "")
+            if etext:
+                type_groups.setdefault(etype, []).append(etext)
+
+        # Map LLM entity types to our PII categories
+        type_mapping = {
+            "name": ("name", "personal_identifier", "warning"),
+            "location": ("location_identifier", "location_data", "warning"),
+            "implicit_id": ("implicit_identifier", "personal_identifier", "warning"),
+            "age": ("age_identifier", "personal_identifier", "warning"),
+            "relationship": ("relationship_identifier", "personal_identifier", "warning"),
+        }
+
+        for etype, samples in type_groups.items():
+            pii_type, category, severity = type_mapping.get(
+                etype, (f"llm_{etype}", "personal_identifier", "warning")
+            )
+            findings.append({
+                "type": pii_type,
+                "category": category,
+                "severity": severity,
+                "count": len(samples),
+                "samples": samples[:3],
+                "method": "llm",
+            })
+
+        return findings
+
+    except Exception:
+        # LLM extraction failed — return empty, regex results still valid
+        return []
 
 
 # --- PII Redaction ---
@@ -150,53 +281,53 @@ def redact_pii_in_text(text: str) -> tuple[str, list[dict]]:
 DEMO_FILES = [
     {
         "id": "doc-001",
-        "name": "Upheaval_Displaced_Registry_2026.xlsx",
+        "name": "Cataclysm_Displaced_Registry_2026.csv",
         "type": "spreadsheet",
         "size": "2.4 MB",
-        "owner": "josha@hrc-hyrule.org",
+        "owner": "maryam@wra-waqwaq.org",
         "sharing": "anyone_with_link",
         "last_modified": "2026-03-15",
         "content": (
-            "Case File Registry - Post-Upheaval Displaced Persons\n"
-            "Case ID: 100-26C00891\n"
-            "Name: Rozel Tidecrest\n"
+            "Case File Registry - Post-Cataclysm Displaced Persons\n"
+            "Case ID: WAQ-26C00891\n"
+            "Name: Rozel al-Bahar\n"
             "DOB: 1985-03-12\n"
             "Phone: +471-55-555-1234\n"
-            "Location: Lookout Landing, Block 4, Shelter 17\n"
+            "Location: Kanbaloh, Block 4, Shelter 17\n"
             "GPS: 47.3821, -12.5634\n"
-            "Status: Displaced person\n"
+            "Status: IDP\n"
             "Medical: PTSD, chronic back pain\n"
-            "Species: Hylian\n"
+            "Ethnicity: Kanbalese\n"
             "Family size: 5\n"
-            "HRC Case: 100-26C00891\n\n"
-            "Case ID: 100-26C00892\n"
-            "Name: Finley Cascada\n"
+            "WRA Case: WAQ-26C00891\n\n"
+            "Case ID: WAQ-26C00892\n"
+            "Name: Finley Maji\n"
             "DOB: 1992-07-22\n"
             "Phone: +471-55-555-5678\n"
-            "Location: Lookout Landing, Block 7, Shelter 3\n"
+            "Location: Kanbaloh, Block 7, Shelter 3\n"
             "GPS: 47.3825, -12.5641\n"
-            "Status: Displaced person\n"
+            "Status: IDP\n"
             "Medical: Pregnant, high-risk, HIV positive\n"
-            "Species: Zora\n"
+            "Ethnicity: Zenji\n"
             "Family size: 3\n"
-            "HRC Case: 100-26C00892\n"
+            "WRA Case: WAQ-26C00892\n"
         ),
     },
     {
         "id": "doc-002",
-        "name": "Donor_Report_Q1_2026.docx",
+        "name": "Donor_Report_Q1_2026.txt",
         "type": "document",
         "size": "890 KB",
-        "owner": "purah@hrc-hyrule.org",
+        "owner": "farah@wra-waqwaq.org",
         "sharing": "org_wide",
         "last_modified": "2026-03-20",
         "content": (
-            "Quarterly Report to Hateno Development Fund - Q1 2026\n"
-            "Programme: Emergency Response - Post-Upheaval Hyrule\n"
+            "Quarterly Report to Ambara Development Fund - Q1 2026\n"
+            "Programme: Emergency Response - Post-Cataclysm Waqwaq\n"
             "Beneficiaries served: 12,400 individuals\n"
-            "Distribution sites: Lookout Landing (5,200), Lurelin Village (3,100), Gerudo Shelter (4,100)\n"
+            "Distribution sites: Kanbaloh (5,200), Sofala Village (3,100), Vakwa Shelter (4,100)\n"
             "Individual case outcomes attached in Annex B\n"
-            "Contact: Paya Kakariko, paya.kakariko@hrc-hyrule.org\n"
+            "Contact: Paya Majala, paya.majala@wra-waqwaq.org\n"
             "Note: See attached beneficiary list for verification (Annex C)\n"
         ),
     },
@@ -205,14 +336,14 @@ DEMO_FILES = [
         "name": "Field_Team_Contact_List.csv",
         "type": "spreadsheet",
         "size": "45 KB",
-        "owner": "hr@hrc-hyrule.org",
+        "owner": "hr@wra-waqwaq.org",
         "sharing": "anyone_with_link",
         "last_modified": "2026-02-28",
         "content": (
             "Name,Role,Phone,Email,Location\n"
-            "Penn Featherton,Field Reporter,+471-55-555-9012,penn@hrc-hyrule.org,Lookout Landing\n"
-            "Addison Signholm,Field Officer,+471-55-555-3456,addison@hrc-hyrule.org,Lurelin Village\n"
-            "Bazz Scaleguard,Security Coordinator,+471-55-555-7890,bazz@hrc-hyrule.org,Zora's Domain\n"
+            "Penn Rashidi,Field Reporter,+471-55-555-9012,penn@wra-waqwaq.org,Kanbaloh\n"
+            "Addison Khalil,Field Officer,+471-55-555-3456,addison@wra-waqwaq.org,Sofala Village\n"
+            "Fariq Haras,Security Coordinator,+471-55-555-7890,fariq@wra-waqwaq.org,Zenji Harbor\n"
             "Note: Do not share - contains personal mobile numbers of field staff in sensitive locations\n"
         ),
     },
@@ -221,18 +352,18 @@ DEMO_FILES = [
         "name": "GBV_Incident_Reports_2026.pdf",
         "type": "document",
         "size": "1.1 MB",
-        "owner": "protection@hrc-hyrule.org",
+        "owner": "protection@wra-waqwaq.org",
         "sharing": "specific_people",
-        "shared_with": ["protection@hrc-hyrule.org", "purah@hrc-hyrule.org"],
+        "shared_with": ["protection@wra-waqwaq.org", "farah@wra-waqwaq.org"],
         "last_modified": "2026-03-22",
         "content": (
             "Gender-Based Violence Incident Tracking\n"
             "CONFIDENTIAL - RESTRICTED ACCESS\n"
             "Case GBV-2026-001: Female, age 24, reported domestic violence\n"
-            "Location: Lookout Landing, Block 9, Shelter 42\n"
-            "Referred to: Gerudo Protection Centre\n"
+            "Location: Kanbaloh, Block 9, Shelter 42\n"
+            "Referred to: Vakwa Protection Centre\n"
             "Case GBV-2026-002: Female, age 17, reported harassment at distribution point\n"
-            "Location: Lurelin Distribution Site B\n"
+            "Location: Sofala Distribution Site B\n"
             "Perpetrator description on file\n"
         ),
     },
@@ -241,16 +372,16 @@ DEMO_FILES = [
         "name": "Biometric_Enrollment_Log.xlsx",
         "type": "spreadsheet",
         "size": "5.7 MB",
-        "owner": "registration@hrc-hyrule.org",
+        "owner": "registration@wra-waqwaq.org",
         "sharing": "org_wide",
         "last_modified": "2025-06-15",
         "content": (
             "Biometric Enrollment Registry\n"
             "Date: 2026-01-10\n"
-            "Site: Lookout Landing Registration Centre\n"
-            "Record 1: Rozel Tidecrest, fingerprint enrolled, iris scan completed, photo captured\n"
-            "Record 2: Finley Cascada, fingerprint enrolled, iris scan completed, photo captured\n"
-            "Record 3: Offrak Boulderon, fingerprint enrolled, iris scan failed - retry scheduled\n"
+            "Site: Kanbaloh Registration Centre\n"
+            "Record 1: Rozel al-Bahar, fingerprint enrolled, iris scan completed, photo captured\n"
+            "Record 2: Finley Maji, fingerprint enrolled, iris scan completed, photo captured\n"
+            "Record 3: Makram Hajjar, fingerprint enrolled, iris scan failed - retry scheduled\n"
             "Total enrolled: 847 individuals\n"
             "Data stored on: Field laptop SN-4429 (unencrypted drive)\n"
             "Backup: USB drive held by registration officer\n"
@@ -264,10 +395,10 @@ DEMO_FILES = [
 DEMO_CONSENT = {
     "doc-001": {
         "file_id": "doc-001",
-        "data_collection": "Upheaval displaced person registration",
+        "data_collection": "Cataclysm displaced person registration",
         "consent_obtained": True,
         "consent_type": "verbal",
-        "consent_language": "Hylian",
+        "consent_language": "Kanbalese",
         "consent_date": "2026-01-15",
         "consent_documented": False,  # verbal but not recorded
         "data_subjects_informed": True,
@@ -285,7 +416,7 @@ DEMO_CONSENT = {
         "data_collection": "GBV incident reporting",
         "consent_obtained": True,
         "consent_type": "written",
-        "consent_language": "Hylian, Gerudo",
+        "consent_language": "Kanbalese, Vakwan",
         "consent_date": "2026-01-10",
         "consent_documented": True,
         "data_subjects_informed": True,
@@ -299,7 +430,7 @@ DEMO_CONSENT = {
         "data_collection": "Biometric enrollment for supply distribution",
         "consent_obtained": True,
         "consent_type": "written",
-        "consent_language": "Hylian",
+        "consent_language": "Kanbalese",
         "consent_date": "2026-01-10",
         "consent_documented": True,
         "data_subjects_informed": True,
@@ -308,7 +439,7 @@ DEMO_CONSENT = {
         "third_party_sharing_disclosed": False,
         "issues": [
             "Right to withdraw not communicated — beneficiaries may feel coerced",
-            "Third-party data sharing (Hateno Fund, regional authorities) not disclosed at enrollment",
+            "Third-party data sharing (Ambara Fund, regional authorities) not disclosed at enrollment",
             "No information given on biometric data retention period",
         ],
     },
@@ -323,8 +454,8 @@ DEMO_MESSAGES = {
             "author": "penn",
             "timestamp": "2026-03-20 14:32",
             "content": (
-                "Update from Lookout Landing: Rozel Tidecrest (case 100-26C00891) didn't show "
-                "for his appointment today. His wife says he went to Hateno for medical "
+                "Update from Kanbaloh: Rozel al-Bahar (case WAQ-26C00891) didn't show "
+                "for his appointment today. His wife says he went to Ambara for medical "
                 "treatment. Will follow up tomorrow."
             ),
         },
@@ -334,7 +465,7 @@ DEMO_MESSAGES = {
             "author": "addison",
             "timestamp": "2026-03-21 09:15",
             "content": (
-                "Lurelin update: 3 new GBV referrals this week. Case details in shared drive. "
+                "Sofala update: 3 new GBV referrals this week. Case details in shared drive. "
                 "One involves a minor - flagging for protection team."
             ),
         },
@@ -342,27 +473,27 @@ DEMO_MESSAGES = {
             "channel": "#general",
             "visibility": "public_channel",
             "guest_access": True,
-            "author": "bazz",
+            "author": "fariq",
             "timestamp": "2026-03-19 11:00",
             "content": (
-                "Reminder: donor visit next week. I've shared Rozel Tidecrest's case file "
-                "(100-26C00891) and Finley Cascada's records with the external audit team. "
-                "Make sure all beneficiary data is accessible. Contact Paya Kakariko "
-                "at paya.kakariko@hrc-hyrule.org if you need access."
+                "Reminder: donor visit next week. I've shared Rozel al-Bahar's case file "
+                "(WAQ-26C00891) and Finley Maji's records with the external audit team. "
+                "Make sure all beneficiary data is accessible. Contact Paya Majala "
+                "at paya.majala@wra-waqwaq.org if you need access."
             ),
         },
     ],
     "gmail": [
         {
-            "subject": "FW: Beneficiary list for Hateno Fund verification",
-            "from": "purah@hrc-hyrule.org",
-            "to": "audit@hateno-fund.org",
+            "subject": "FW: Beneficiary list for Ambara Fund verification",
+            "from": "farah@wra-waqwaq.org",
+            "to": "audit@ambara-fund.org",
             "timestamp": "2026-03-18 16:45",
             "content": (
                 "Hi,\n\nPlease find attached the beneficiary list for Q1 verification.\n"
-                "Key cases: Rozel Tidecrest (100-26C00891), Finley Cascada (100-26C00892).\n"
-                "The spreadsheet includes names, HRC case numbers, and distribution "
-                "records for all 12,400 beneficiaries.\n\nBest,\nPaya Kakariko"
+                "Key cases: Rozel al-Bahar (WAQ-26C00891), Finley Maji (WAQ-26C00892).\n"
+                "The spreadsheet includes names, WRA case numbers, and distribution "
+                "records for all 12,400 beneficiaries.\n\nBest,\nPaya Majala"
             ),
             "attachments": ["Beneficiary_List_Q1_Full.xlsx"],
         },
@@ -420,7 +551,24 @@ def execute_tool(tool_name: str, args: dict, access_token: str | None = None) ->
         return json.dumps({"error": "Delete requires live API access"})
     # --- New workflow tools ---
     elif tool_name == "redact_file":
-        return _redact_file(args.get("file_id", ""), args.get("service", "onedrive"))
+        file_id = args.get("file_id", "")
+        if use_live_onedrive:
+            # If file_id looks like a name/query (not an opaque ID), look it up
+            if file_id and not file_id.startswith("24") and not file_id.startswith("01"):
+                from amanat.tools.onedrive import _list_all_files
+                q = file_id.lower()
+                for f in _list_all_files(access_token):
+                    if q in f.get("name", "").lower():
+                        file_id = f["id"]
+                        break
+            return _redact_file_live(access_token, file_id)
+        return _redact_file(file_id, args.get("service", "onedrive"))
+    elif tool_name == "send_email":
+        if use_live_outlook or use_live_onedrive:
+            from amanat.tools.outlook import send_outlook_email
+            token = access_token
+            return send_outlook_email(token, args.get("to", ""), args.get("subject", ""), args.get("body", ""))
+        return json.dumps({"error": "Email requires live Microsoft connection"})
     elif tool_name == "retention_scan":
         return _retention_scan(args.get("service", "onedrive"))
     elif tool_name == "generate_dpia":
@@ -434,6 +582,15 @@ def execute_tool(tool_name: str, args: dict, access_token: str | None = None) ->
         )
     elif tool_name == "check_consent":
         return _check_consent(args.get("file_id", ""), args.get("service", "onedrive"))
+    elif tool_name == "notify_channel":
+        # notify_channel always uses the bot token, not the user's Token Vault token.
+        # It doesn't need live API access — the bot token is in .env.
+        from amanat.tools.slack import notify_slack_channel
+        return notify_slack_channel(
+            "",  # access_token unused — bot token loaded from env inside the function
+            args.get("channel", ""),
+            args.get("pii_summary", ""),
+        )
     elif tool_name == "parse_document":
         from amanat.tools.docling_tool import parse_and_scan_document
         return parse_and_scan_document(
@@ -641,6 +798,104 @@ def _search_messages(service: str, query: str) -> str:
 
 
 # ── Workflow 1: Safe Data Sharing / Redaction ──────────────────────────
+
+
+def _redact_file_live(access_token: str, file_id: str) -> str:
+    """Redact PII from a real OneDrive file.
+
+    Flow: download original → redact → upload as new file (REDACTED_originalname)
+    → keep original intact. The redacted copy is safe to share with donors.
+    """
+    from amanat.tools.onedrive import _headers, _download_text, GRAPH_BASE
+    import httpx
+
+    headers = _headers(access_token)
+
+    # Get file metadata
+    resp = httpx.get(
+        f"{GRAPH_BASE}/me/drive/items/{file_id}",
+        headers=headers,
+        params={"$select": "id,name,file,size,parentReference"},
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        return json.dumps({"error": f"File not found: {file_id}"})
+
+    item = resp.json()
+    name = item.get("name", file_id)
+    mime = item.get("file", {}).get("mimeType", "")
+    parent_id = item.get("parentReference", {}).get("id")
+
+    # Download content
+    content = _download_text(access_token, file_id, mime)
+    if not content:
+        return json.dumps({"error": f"Could not extract text from {name}"})
+
+    # Redact
+    redacted_text, redactions = redact_pii_in_text(content)
+    total_redacted = sum(r["count"] for r in redactions)
+    categories = list(set(r["category"] for r in redactions))
+
+    if not redactions:
+        return json.dumps({
+            "file_id": file_id, "name": name,
+            "action": "redact", "status": "no_pii_found",
+            "message": f"No PII found in {name}. No redaction needed.",
+        })
+
+    # Upload redacted copy alongside the original
+    redacted_name = f"REDACTED_{name}"
+    if parent_id:
+        upload_url = f"{GRAPH_BASE}/me/drive/items/{parent_id}:/{redacted_name}:/content"
+    else:
+        upload_url = f"{GRAPH_BASE}/me/drive/root:/{redacted_name}:/content"
+
+    upload_resp = httpx.put(
+        upload_url,
+        headers={**headers, "Content-Type": "text/plain"},
+        content=redacted_text.encode("utf-8"),
+        timeout=60,
+    )
+
+    uploaded = upload_resp.status_code in (200, 201)
+    redacted_file_id = upload_resp.json().get("id", "") if uploaded else ""
+
+    lines = [
+        f"Redacted {total_redacted} PII instances across {len(redactions)} categories from '{name}'.",
+        f"Categories redacted: {', '.join(categories)}",
+        "",
+    ]
+
+    if uploaded:
+        lines.append(f"Redacted copy uploaded to OneDrive as '{redacted_name}' in the same folder.")
+        lines.append(f"Original file '{name}' is unchanged.")
+        lines.append(f"Share '{redacted_name}' with external partners instead of the original.")
+    else:
+        lines.append(f"Redaction complete but upload failed ({upload_resp.status_code}).")
+        lines.append("Redacted content shown below for manual copy.")
+
+    lines.extend([
+        "",
+        "REDACTED PREVIEW (first 1500 chars):",
+        "─" * 40,
+        redacted_text[:1500],
+        "─" * 40,
+    ])
+
+    lines.append("\n---JSON---")
+    lines.append(json.dumps({
+        "file_id": file_id,
+        "name": name,
+        "action": "redact",
+        "status": "success",
+        "redacted_file_name": redacted_name,
+        "redacted_file_id": redacted_file_id,
+        "uploaded": uploaded,
+        "total_pii_redacted": total_redacted,
+        "categories_redacted": categories,
+    }))
+    return "\n".join(lines)
+
 
 def _redact_file(file_id: str, service: str) -> str:
     """Redact all PII from a file and return the safe version."""

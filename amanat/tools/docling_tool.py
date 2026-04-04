@@ -20,6 +20,100 @@ from amanat.tools.scanner import detect_pii_in_text
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx", ".html", ".md", ".csv"}
 
+DOCLING_MIMES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/msword",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.ms-excel",
+}
+
+MIME_TO_EXT = {
+    "application/pdf": ".pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/msword": ".doc",
+    "application/vnd.ms-powerpoint": ".ppt",
+    "application/vnd.ms-excel": ".xls",
+}
+
+
+def extract_text(file_path: str, use_vlm: bool = False) -> str:
+    """
+    Extract text from a document using Docling. Returns raw markdown text.
+    Does not run PII detection — use this when you need just the text.
+
+    Returns empty string if extraction fails or produces no content.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        return ""
+
+    try:
+        from docling.document_converter import DocumentConverter
+        from docling.datamodel.base_models import InputFormat
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+
+        if use_vlm:
+            from docling.document_converter import PdfFormatOption
+            from docling.pipeline.vlm_pipeline import VlmPipeline
+            from docling.datamodel.pipeline_options import (
+                VlmPipelineOptions,
+                VlmConvertOptions,
+            )
+            from docling.datamodel.vlm_engine_options import MlxVlmEngineOptions
+            vlm_opts = VlmConvertOptions.from_preset(
+                "granite_docling",
+                engine_options=MlxVlmEngineOptions(),
+            )
+            pipeline_opts = VlmPipelineOptions()
+            pipeline_opts.vlm_options = vlm_opts
+            converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(
+                        pipeline_cls=VlmPipeline,
+                        pipeline_options=pipeline_opts,
+                    ),
+                    InputFormat.IMAGE: PdfFormatOption(
+                        pipeline_cls=VlmPipeline,
+                        pipeline_options=pipeline_opts,
+                    ),
+                }
+            )
+        else:
+            converter = DocumentConverter()
+
+        result = converter.convert(str(path))
+        return result.document.export_to_markdown()
+    except Exception:
+        return ""
+
+
+def extract_text_from_bytes(content: bytes, mime_type: str) -> str:
+    """
+    Extract text from raw bytes of a document. Writes to a temp file,
+    runs Docling, returns markdown text. Used by OneDrive scanner when
+    a PDF or Office file is downloaded and needs text extraction.
+
+    Returns empty string if the mime type is unsupported or extraction fails.
+    """
+    if mime_type not in DOCLING_MIMES:
+        return ""
+
+    suffix = MIME_TO_EXT.get(mime_type, ".pdf")
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        return extract_text(tmp_path)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
 
 def parse_and_scan_document(
     file_path: str,
@@ -60,18 +154,26 @@ def parse_and_scan_document(
 
     try:
         if use_vlm:
-            # VLM pipeline — granite-docling-258M for enhanced table/OCR
+            # granite-docling-258M via MLX on Apple Silicon
+            from docling.document_converter import PdfFormatOption
             from docling.pipeline.vlm_pipeline import VlmPipeline
             from docling.datamodel.pipeline_options import (
                 VlmPipelineOptions,
-                granite_picture_description,
+                VlmConvertOptions,
             )
-            options = VlmPipelineOptions()
-            options.vlm_options = granite_picture_description
+            from docling.datamodel.vlm_engine_options import MlxVlmEngineOptions
+            vlm_opts = VlmConvertOptions.from_preset(
+                "granite_docling",
+                engine_options=MlxVlmEngineOptions(),
+            )
+            pipeline_opts = VlmPipelineOptions()
+            pipeline_opts.vlm_options = vlm_opts
             converter = DocumentConverter(
                 format_options={
-                    InputFormat.PDF: options,
-                    InputFormat.IMAGE: options,
+                    InputFormat.PDF: PdfFormatOption(
+                        pipeline_cls=VlmPipeline,
+                        pipeline_options=pipeline_opts,
+                    ),
                 }
             )
         else:

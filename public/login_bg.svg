@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1200">
+  <rect width="800" height="1200" fill="#0e1629"/>
+
+  <!-- Cheerful file icon (teal, centered) -->
+  <g transform="translate(320, 420) scale(1.25)">
+    <path fill="#14A89B" d="M86,6L32,6c-7.2,0-13,5.8-13,13v90c0,7.2,5.8,13,13,13h64c7.2,0,13-5.8,13-13V29c0-6.1-2.4-11.9-6.7-16.3S92.1,6,86,6z M41.5,55c0-4.1,3.4-7.5,7.5-7.5s7.5,3.4,7.5,7.5s-3.4,7.5-7.5,7.5S41.5,59.1,41.5,55z M78.8,74.8C77.7,82,71.5,87.5,64,87.5S50.3,82,49.2,74.8c-0.2-1.2,0.7-2.3,2-2.3h25.7C78.1,72.5,79,73.6,78.8,74.8z M84,58h-9c-1.7,0-3-1.3-3-3s1.3-3,3-3h9c1.7,0,3,1.3,3,3S85.7,58,84,58z M96,26c-3.9,0-7-3.1-7-7l0-6.7c3.4,0.6,6.5,2.2,9,4.7c2.5,2.5,4.1,5.6,4.7,9H96z"/>
+  </g>
+
+  <!-- "amanat" text -->
+  <text x="400" y="640" text-anchor="middle" font-family="'Noto Sans', 'Helvetica Neue', Arial, sans-serif" font-size="56" font-weight="800" fill="#ffffff" letter-spacing="-1">amanat</text>
+
+  <!-- Tagline -->
+  <text x="400" y="690" text-anchor="middle" font-family="'Noto Sans', 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="600" fill="#14A89B">Data Governance AI Agent</text>
+</svg>

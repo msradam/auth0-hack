@@ -1,161 +1,374 @@
 """
-Amanat Agent — BeeAI Framework with Granite 4 Micro.
+Amanat Agent — Strands Agents SDK with Granite 4 Micro.
 
-Uses BeeAI's RequirementAgent for native tool calling with retry logic,
-cycle detection, and structured final answers. Works with any model that
-supports OpenAI-compatible function calling (Granite via Ollama, OpenAI, etc).
+Uses Strands for the agent loop with native tool call hooks:
+- BeforeToolCallEvent: confirmation dialog for destructive actions, show Chainlit steps
+- AfterToolCallEvent: capture results for charts, close Chainlit steps
+
+Strands was chosen over BeeAI because it exposes per-tool-call lifecycle
+hooks that enable confirmation dialog interception and Chainlit UI
+integration (cl.Step per tool call). BeeAI's RequirementAgent runs tools
+internally with no public interception point.
 """
 
-import asyncio
+import os
 
-from beeai_framework.agents.requirement import RequirementAgent
-from beeai_framework.backend.chat import ChatModel
-from beeai_framework.memory import UnconstrainedMemory
+from strands import Agent, tool
+from strands.models.openai import OpenAIModel
 
-from amanat.knowledge.policies import get_documents_for_prompt, search_policies
-from amanat.tools.bee_tools import ALL_TOOLS, set_access_token
+from amanat.knowledge.policies import get_rag_documents
+from amanat.tools.scanner import execute_tool
 
 
-# Flat system prompt string for consumers that manage their own agent loop
-# (e.g. Chainlit app.py). RequirementAgent uses role/instructions instead.
 SYSTEM_PROMPT = """\
-You are Amanat, a data governance agent for humanitarian NGOs.
+You are Amanat, a data governance agent for the Waqwaq Relief Authority (WRA).
 You protect beneficiary data by scanning, investigating, and acting.
 
 TOOL ROUTING — use the right tool for each service:
-- To scan FILES on OneDrive: scan_files(service="onedrive")
-- To scan SLACK messages: search_messages(service="slack", query="...")
-- To scan OUTLOOK emails: search_messages(service="outlook", query="...")
-- To scan ALL services: call scan_files for OneDrive, then search_messages for Slack, then search_messages for Outlook.
+- OneDrive files: scan_files(service="onedrive")
+- Slack messages: search_messages(service="slack", query="...")
+- Outlook emails: search_messages(service="outlook", query="...")
+- "scan outlook" or "check emails" means: search_messages(service="outlook", query="beneficiary OR case OR medical")
+- "scan slack" means: search_messages(service="slack", query="beneficiary OR case OR medical")
+- scan_files is ONLY for OneDrive. NEVER use scan_files for outlook or slack.
+- To post alerts to Slack: notify_channel(channel="CHANNEL", pii_summary="...", service="slack")
+- ONLY use channel names from scan results (listed under AFFECTED CHANNELS). NEVER invent channel names.
+- After a Slack scan that finds violations, post an alert to each affected channel listed in the results.
 
-WORKFLOW: Do not just report — investigate and act.
+WORKFLOW:
 1. SCAN the requested service(s) using the correct tool above.
 2. DIG DEEPER: use detect_pii, check_sharing, check_consent on flagged items.
-3. ACT: use redact_file, revoke_sharing, download_file, delete_file, generate_dpia.
+3. ACT: for Slack scans, auto-post alerts to affected channels. For OneDrive, act only when asked.
 4. REPORT what you found and what you did.
 
-Chain multiple tools in sequence. If a scan reveals a problem, investigate it.
-If sharing a file, check PII and redact first. If data is sensitive, check consent.\
+Chain multiple tools in sequence. If a scan reveals a problem, investigate it.\
 """
 
-# Role and instructions are passed separately to RequirementAgent —
-# it builds its own system prompt from these fields.
-AGENT_ROLE = (
-    "Amanat, a data governance agent for humanitarian NGOs. "
-    "You protect beneficiary data by scanning, investigating, and acting."
-)
 
-AGENT_INSTRUCTIONS = [
-    "TOOL ROUTING: scan_files is for OneDrive files only. search_messages is for Slack and Outlook.",
-    "To scan Slack: search_messages(service='slack', query='...')",
-    "To scan Outlook: search_messages(service='outlook', query='...')",
-    "To scan OneDrive: scan_files(service='onedrive')",
-    "Do not just report — investigate and act.",
-    "DIG DEEPER: use detect_pii, check_sharing, check_consent on flagged items.",
-    "ACT: use redact_file, revoke_sharing, download_file, delete_file, generate_dpia.",
-    "REPORT what you found and what you did.",
-    "Chain multiple tools in sequence. If a scan reveals a problem, investigate it.",
-    "If sharing a file, check PII and redact first. If data is sensitive, check consent.",
-]
+def _build_system_prompt(query: str) -> str:
+    """Build system prompt with optional RAG documents for policy questions.
 
-
-def _get_extra_instructions(query: str) -> list[str]:
-    """Get additional instructions with policy documents for policy questions.
-
-    For scan/remediation queries, the violation report from tools already
-    contains policy citations. Adding documents makes the prompt too long
-    for small models and causes them to produce boilerplate instead of
-    grounding on tool results.
+    Policy questions get RAG documents injected. Scan/action queries don't
+    (to keep context short for Granite Micro). A query is a policy question
+    if it asks about rules, standards, or requirements rather than requesting
+    a scan or action on a specific service.
     """
-    scan_keywords = {"scan", "check", "audit", "review", "fix", "delete",
-                     "revoke", "download", "remediate", "remove", "redact",
-                     "share", "retention", "consent", "dpia"}
-    is_scan_query = any(kw in query.lower() for kw in scan_keywords)
+    q = query.lower()
+
+    # Policy question indicators — these override scan keywords
+    policy_indicators = [
+        "what does", "what are the rules", "what are the requirements",
+        "icrc", "gdpr", "iasc", "sphere", "handbook", "article",
+        "policy", "standard", "guideline", "regulation",
+        "allowed", "permitted", "legal basis", "lawful",
+        "do we need", "are we compliant", "is it okay", "can we",
+        "what constitutes", "when is", "under what circumstances",
+        "difference between",
+    ]
+    is_policy_question = any(p in q for p in policy_indicators)
+
+    # Scan/action indicators — only if NOT a policy question
+    scan_keywords = [
+        "scan", "search slack", "search outlook", "check my", "check if",
+        "audit", "fix", "delete", "revoke", "download", "remediate",
+        "remove", "redact", "retention scan", "notify", "lock down",
+        "publicly shared", "publicly accessible", "are any",
+    ]
+    is_scan_query = not is_policy_question and any(kw in q for kw in scan_keywords)
 
     if is_scan_query:
-        return []
+        return SYSTEM_PROMPT
 
-    relevant_policies = search_policies(query)
-    policy_ids = [p["doc_id"] for p in relevant_policies]
-    documents_block = get_documents_for_prompt(policy_ids)
+    # Policy question or ambiguous — inject RAG documents
+    documents_block = get_rag_documents(query, max_docs=5)
     if documents_block:
-        return [f"Ground your answer in these policy documents:\n{documents_block}"]
-    return []
+        return (
+            SYSTEM_PROMPT + "\n\n"
+            "Answer the following question using ONLY the information in the "
+            "provided documents. Cite the source document in your answer. "
+            "If the answer cannot be found in the documents, say so. "
+            "Do NOT scan any services — just answer the policy question.\n\n"
+            + documents_block
+        )
+    return SYSTEM_PROMPT
 
 
-def create_agent(
-    model: str = "openai:granite4-micro",
-    access_token: str | None = None,
-    extra_instructions: list[str] | None = None,
-) -> RequirementAgent:
-    """Create a BeeAI RequirementAgent configured for Amanat.
+# --- Tool definitions using Strands @tool decorator ---
+# Each tool wraps execute_tool() from scanner.py, which handles
+# both demo mode and live API calls via Token Vault.
 
-    RequirementAgent uses native tool calling with built-in retry logic,
-    cycle detection, and a structured final_answer pattern.
+_access_token: str | None = None
+_service_tokens: dict[str, str] = {}
+
+
+def set_access_token(token: str | None, service_tokens: dict[str, str] | None = None):
+    """Set access tokens for live API calls.
+
+    Args:
+        token: Default token (OneDrive/Microsoft Graph).
+        service_tokens: Per-service tokens {"onedrive": "...", "slack": "...", "outlook": "..."}.
     """
-    set_access_token(access_token)
-
-    llm = ChatModel.from_name(model)
-
-    instructions = AGENT_INSTRUCTIONS + (extra_instructions or [])
-
-    agent = RequirementAgent(
-        llm=llm,
-        tools=ALL_TOOLS,
-        memory=UnconstrainedMemory(),
-        role=AGENT_ROLE,
-        instructions=instructions,
-    )
-    return agent
+    global _access_token, _service_tokens
+    _access_token = token
+    _service_tokens = service_tokens or {}
 
 
-async def run_agent(query: str, access_token: str | None = None,
-                    model: str = "openai:granite4-micro") -> str:
-    """Run the agent on a query and return the final answer."""
-    extra = _get_extra_instructions(query)
-    agent = create_agent(model=model, access_token=access_token,
-                         extra_instructions=extra)
+def _run(name: str, **kwargs) -> str:
+    """Execute a tool and return text result.
 
-    result = await agent.run(
-        query,
-        execution={
-            "max_iterations": 10,
-            "total_max_retries": 5,
-            "max_retries_per_step": 2,
+    Picks the correct per-service token from _service_tokens based on
+    the service argument. Falls back to _access_token (default/OneDrive).
+    """
+    service = kwargs.get("service", "")
+    token = _service_tokens.get(service, _access_token)
+    result = execute_tool(name, kwargs, access_token=token)
+    # Strip JSON blob — LLM gets the human-readable text portion only
+    text = result.split("\n---JSON---")[0] if "---JSON---" in result else result
+    # Truncate to prevent context overflow on large scans
+    if len(text) > 4000:
+        text = text[:4000] + "\n\n[... truncated for context. Full results available in UI.]"
+    return text
+
+
+@tool
+def scan_files(service: str, query: str = "") -> str:
+    """Scan files for sensitive data exposure and policy violations.
+    ONLY for OneDrive. Do NOT use for Outlook or Slack.
+    For Outlook emails, use search_messages(service="outlook").
+    For Slack messages, use search_messages(service="slack").
+
+    Args:
+        service: Must be "onedrive". Use search_messages for other services.
+        query: Optional search query to filter files by name.
+    """
+    if service in ("outlook", "gmail", "email"):
+        return "Error: scan_files is for OneDrive only. Use search_messages(service=\"outlook\") to search emails."
+    if service == "slack":
+        return "Error: scan_files is for OneDrive only. Use search_messages(service=\"slack\") to search Slack messages."
+    return _run("scan_files", service=service, query=query or None)
+
+
+@tool
+def check_sharing(file_id: str, service: str) -> str:
+    """Check the sharing and permission settings for a specific file.
+
+    Args:
+        file_id: The file identifier to check.
+        service: Which service — "onedrive".
+    """
+    return _run("check_sharing", file_id=file_id, service=service)
+
+
+@tool
+def detect_pii(file_id: str, service: str) -> str:
+    """Analyze file content for PII and sensitive humanitarian data.
+
+    Args:
+        file_id: The file to analyze.
+        service: Which service — "onedrive".
+    """
+    return _run("detect_pii", file_id=file_id, service=service)
+
+
+@tool
+def search_messages(service: str, query: str) -> str:
+    """Search messaging services for sensitive content.
+    Use this to search Slack messages or Outlook emails for PII leaks.
+
+    Args:
+        service: Which service — "slack" or "outlook".
+        query: Search query.
+    """
+    return _run("search_messages", service=service, query=query)
+
+
+@tool
+def revoke_sharing(file_id: str, service: str) -> str:
+    """REMEDIATION: Revoke public sharing on files that contain PII.
+    Pass the file IDs exactly as returned by scan_files.
+    Accepts a single file ID or multiple comma-separated file IDs.
+
+    Args:
+        file_id: One or more file IDs (comma-separated). Copy these directly from scan_files results.
+        service: The service — "onedrive".
+    """
+    return _run("revoke_sharing", file_id=file_id, service=service)
+
+
+@tool
+def download_file(file_id: str, service: str) -> str:
+    """REMEDIATION: Download a file from a connected service to local storage.
+
+    Args:
+        file_id: The file ID to download.
+        service: The service — "onedrive".
+    """
+    return _run("download_file", file_id=file_id, service=service)
+
+
+@tool
+def delete_file(file_id: str, service: str) -> str:
+    """REMEDIATION: Move a file to trash on the connected service.
+
+    Args:
+        file_id: The file ID to delete.
+        service: The service — "onedrive".
+    """
+    return _run("delete_file", file_id=file_id, service=service)
+
+
+@tool
+def redact_file(file_id: str, service: str) -> str:
+    """SAFE SHARING: Create a redacted copy of a file with all PII removed.
+    Downloads the file, replaces all PII with redaction labels, uploads
+    the redacted version as REDACTED_filename in the same folder.
+    Call this directly without scanning first.
+
+    Args:
+        file_id: A file ID or filename (e.g. "Cataclysm_Displaced_Registry_2026.csv").
+        service: Which service — "onedrive".
+    """
+    return _run("redact_file", file_id=file_id, service=service)
+
+
+@tool
+def retention_scan(service: str) -> str:
+    """RETENTION: Scan for data retention policy violations.
+
+    Args:
+        service: Which service — "onedrive".
+    """
+    return _run("retention_scan", service=service)
+
+
+@tool
+def generate_dpia(activity: str, data_types: str, purpose: str) -> str:
+    """COMPLIANCE: Generate a Data Protection Impact Assessment.
+
+    Args:
+        activity: Name of the data processing activity.
+        data_types: Comma-separated data types being processed.
+        purpose: Purpose of the data processing.
+    """
+    types_list = [t.strip() for t in data_types.split(",") if t.strip()]
+    result = execute_tool("generate_dpia", {
+        "activity": activity,
+        "data_types": types_list,
+        "purpose": purpose,
+    }, access_token=_access_token)
+    return result
+
+
+@tool
+def check_consent(file_id: str, service: str) -> str:
+    """CONSENT: Check consent documentation status for a file.
+
+    Args:
+        file_id: The file ID to check consent for.
+        service: Which service — "onedrive".
+    """
+    return _run("check_consent", file_id=file_id, service=service)
+
+
+@tool
+def notify_channel(channel: str, pii_summary: str, service: str) -> str:
+    """REMEDIATION: Post a data protection alert to a Slack channel.
+
+    Args:
+        channel: The Slack channel ID to post to.
+        pii_summary: Summary of PII findings.
+        service: Which service — "slack".
+    """
+    return _run("notify_channel", channel=channel, pii_summary=pii_summary, service=service)
+
+
+@tool
+def send_email(to: str, subject: str, body: str) -> str:
+    """REMEDIATION: Send a data protection alert email to a user.
+    Use this to notify someone who sent or shared sensitive data.
+
+    Args:
+        to: Recipient email address.
+        subject: Email subject line.
+        body: Email body text.
+    """
+    return _run("send_email", to=to, subject=subject, body=body, service="outlook")
+
+
+@tool
+def parse_document(file_path: str) -> str:
+    """DOCUMENT PARSING: Parse a PDF, DOCX, or other document and scan for PII.
+
+    Args:
+        file_path: Local path to the document to parse.
+    """
+    from amanat.tools.docling_tool import parse_and_scan_document
+    return parse_and_scan_document(file_path)
+
+
+ALL_TOOLS = [
+    scan_files, check_sharing, detect_pii, search_messages,
+    revoke_sharing, download_file, delete_file, redact_file,
+    retention_scan, generate_dpia, check_consent, notify_channel,
+    send_email, parse_document,
+]
+
+REMEDIATION_TOOLS = {"revoke_sharing", "download_file", "delete_file"}
+
+
+def create_model() -> OpenAIModel:
+    """Create the Strands OpenAI model.
+
+    Supports local llama-server (model_id=granite4-micro) and
+    OpenRouter (model_id=ibm-granite/granite-4.0-h-micro).
+    Set GRANITE_MODEL_ID env var to override the model ID.
+    """
+    base_url = os.environ.get("OPENAI_API_BASE", "http://localhost:8080/v1")
+    # Auto-detect model ID based on provider
+    if "openrouter" in base_url:
+        default_model = "ibm-granite/granite-4.0-h-micro"
+    else:
+        default_model = "granite4-micro"
+    model_id = os.environ.get("GRANITE_MODEL_ID", default_model)
+
+    return OpenAIModel(
+        client_args={
+            "base_url": base_url,
+            "api_key": os.environ.get("OPENAI_API_KEY", "llama"),
         },
+        model_id=model_id,
+        params={"max_tokens": 4096},
     )
 
-    # RequirementAgent returns output as a list of messages
-    # The final answer is in the last output message
-    if result.output:
-        return result.output[-1].text
-    return "Agent completed without producing an answer."
 
+def create_agent(system_prompt: str | None = None, access_token: str | None = None,
+                 service_tokens: dict[str, str] | None = None,
+                 demo_tools: bool = False) -> Agent:
+    """Create a Strands Agent configured for Amanat.
 
-def run_agent_sync(query: str, access_token: str | None = None,
-                   model: str = "openai:granite4-micro") -> str:
-    """Synchronous wrapper for run_agent."""
-    return asyncio.run(run_agent(query, access_token=access_token, model=model))
-
-
-class AmanatAgent:
-    """Compatibility wrapper around BeeAI RequirementAgent.
-
-    Provides the same interface as the old manual agent loop
-    for code that hasn't been migrated yet.
+    If demo_tools=True and the LLM provider doesn't support tool calling
+    (e.g. OpenRouter), creates an agent without tools. The caller should
+    pre-execute tools and inject results into the system prompt.
     """
+    set_access_token(access_token, service_tokens)
 
-    def __init__(
-        self,
-        base_url: str = "http://localhost:8080/v1",
-        api_key: str = "llama",
-        model: str = "granite4-micro",
-        tool_executor=None,
-    ):
-        self.model = f"openai:{model}"
-        self.tool_executor = tool_executor
-        self.messages: list[dict] = []
+    base_url = os.environ.get("OPENAI_API_BASE", "")
+    provider_supports_tools = "openrouter" not in base_url
 
-    def run(self, user_query: str) -> str:
-        """Run the agent loop via BeeAI."""
-        return run_agent_sync(user_query, model=self.model)
+    return Agent(
+        model=create_model(),
+        system_prompt=system_prompt or SYSTEM_PROMPT,
+        tools=ALL_TOOLS if provider_supports_tools else [],
+    )
+
+
+async def run_agent(query: str, access_token: str | None = None) -> str:
+    """Run the agent on a query and return the final answer."""
+    system_prompt = _build_system_prompt(query)
+    agent = create_agent(system_prompt=system_prompt, access_token=access_token)
+    result = agent(query)
+    if result.message and result.message.get("content"):
+        for block in result.message["content"]:
+            if "text" in block:
+                return block["text"]
+    return "Agent completed without producing an answer."

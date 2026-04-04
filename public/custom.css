@@ -1,0 +1,91 @@
+/* Amanat custom styles — humanitarian data governance UX */
+
+/* Login page: match app background */
+.cl-login-page {
+  background: #0e1629 !important;
+}
+
+/* Login sidebar: use our branded background instead of blown-up favicon */
+div.relative.hidden.bg-muted.lg\:block img {
+  object-fit: contain !important;
+  object-position: center !important;
+  background: #0f1729 !important;
+  filter: none !important;
+  brightness: unset !important;
+}
+
+/* Welcome screen markdown — make it feel like a trusted tool, not a chatbot */
+.cl-welcome-screen .cl-markdown {
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* Starter buttons — larger touch targets for field workers on tablets */
+.cl-starter-button {
+  min-height: 56px !important;
+  border-radius: 12px !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+}
+
+/* Message bubbles — generous padding for readability in bright sunlight */
+.cl-message {
+  padding: 16px 20px !important;
+}
+
+/* Tool call steps — make them clearly distinct from conversation */
+.cl-step {
+  border-left: 3px solid hsl(173, 80%, 40%) !important;
+  margin-left: 8px !important;
+}
+
+/* Action buttons — prominent, clear labels */
+.cl-action-button {
+  min-height: 44px !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+}
+
+/* Task list — visible progress for slow LLM operations */
+.cl-task-list {
+  border-radius: 12px !important;
+}
+
+/* Tables in messages — common for scan results */
+.cl-message table {
+  font-size: 14px;
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+}
+
+.cl-message th {
+  background: hsl(173, 80%, 40%, 0.15);
+  color: hsl(173, 80%, 40%);
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.cl-message td {
+  padding: 6px 12px;
+  border-bottom: 1px solid hsl(217, 33%, 22%);
+}
+
+/* Code blocks — for policy citations and technical details */
+.cl-message pre {
+  border-radius: 8px !important;
+  font-size: 13px !important;
+}
+
+/* Smooth scrolling for long scan reports */
+.cl-chat-container {
+  scroll-behavior: smooth;
+}
+
+/* Footer attribution — subtle but present */
+.cl-footer {
+  font-size: 11px !important;
+  opacity: 0.6;
+}

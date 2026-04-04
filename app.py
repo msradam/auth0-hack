@@ -4,6 +4,8 @@ Amanat - Chainlit web UI with Auth0 authentication.
 Run with: chainlit run app.py
 """
 
+import base64
+import hashlib
 import json
 import logging
 import os
@@ -11,20 +13,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+
 import chainlit as cl
 import plotly.graph_objects as go
 from chainlit import User
-from openai import OpenAI
 
-from amanat.knowledge.policies import get_documents_for_prompt, search_policies
 from amanat.tools.scanner import execute_tool
-from amanat.tools.bee_tools import get_openai_tools_schema
-from amanat.agent import SYSTEM_PROMPT, AGENT_ROLE, AGENT_INSTRUCTIONS, _get_extra_instructions
+from amanat.agent import (
+    SYSTEM_PROMPT, _build_system_prompt, create_agent,
+    set_access_token, REMEDIATION_TOOLS,
+)
 from amanat.auth import Auth0TokenVault
-from amanat.ciba import requires_ciba, request_ciba_authorization
-
-# Build OpenAI-format tool list from BeeAI tool definitions
-TOOLS = get_openai_tools_schema()
+from amanat.ciba import requires_ciba
 
 
 # Patch Auth0 OAuth provider to request JWT + refresh token for Token Vault
@@ -64,24 +67,52 @@ for i, p in enumerate(providers):
         break
 
 
-MODEL = "granite4-micro"
-client = OpenAI(base_url="http://localhost:8080/v1", api_key="llama")
-
-# --- Audit logging ---
+# --- Audit logging (encrypted at rest) ---
 AUDIT_DIR = Path("audit-logs")
 AUDIT_DIR.mkdir(exist_ok=True)
 
+# Fixed salt for deterministic key derivation from CHAINLIT_AUTH_SECRET
+_AUDIT_SALT = b"amanat-audit-log-encryption-v1"
+
+
+def _get_fernet() -> Fernet:
+    """Derive a Fernet key from CHAINLIT_AUTH_SECRET using PBKDF2."""
+    secret = os.environ.get("CHAINLIT_AUTH_SECRET", "dev-fallback-secret")
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=_AUDIT_SALT,
+        iterations=480_000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(secret.encode()))
+    return Fernet(key)
+
 
 def _audit_log(session_id: str, event: str, data: dict | None = None):
-    """Append a timestamped audit event to the session log file."""
-    log_file = AUDIT_DIR / f"{session_id}.jsonl"
+    """Append an encrypted audit event to the session log file."""
+    log_file = AUDIT_DIR / f"{session_id}.jsonl.enc"
     entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "event": event,
         **(data or {}),
     }
+    fernet = _get_fernet()
+    encrypted_line = fernet.encrypt(json.dumps(entry).encode()).decode()
     with open(log_file, "a") as f:
-        f.write(json.dumps(entry) + "\n")
+        f.write(encrypted_line + "\n")
+
+
+def decrypt_audit_log(path: str | Path) -> list[dict]:
+    """Decrypt all entries in an encrypted audit log file."""
+    fernet = _get_fernet()
+    entries = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                plaintext = fernet.decrypt(line.encode()).decode()
+                entries.append(json.loads(plaintext))
+    return entries
 
 # --- Connected Accounts routes (for Token Vault) ---
 # Token Vault requires the user to link external accounts individually.
@@ -117,6 +148,27 @@ async def connect_service(request):
     conn_config = CONNECTIONS.get(service)
     if not conn_config:
         return JSONResponse({"error": f"Unknown service: {service}"}, 400)
+
+    # In DEMO_TOOLS mode, simulate the connect flow with a success page
+    if DEMO_TOOLS:
+        display = _SERVICE_DISPLAY.get(service, {})
+        name = display.get("name", service)
+        base_url = str(request.base_url).rstrip("/")
+        html = f"""<!DOCTYPE html>
+<html><head><style>
+body {{ background: #0e1629; color: #c8d4e0; font-family: 'Noto Sans', sans-serif;
+       display: flex; align-items: center; justify-content: center; height: 100vh; }}
+.card {{ text-align: center; padding: 40px; }}
+h2 {{ color: #14A89B; }}
+a {{ color: #14A89B; text-decoration: none; font-weight: 600; }}
+</style></head><body>
+<div class="card">
+<h2>{display.get('icon', '')} {name} Connected</h2>
+<p>Service linked via Auth0 Token Vault (demo mode).</p>
+<p>Scopes: <code>{', '.join(conn_config.get('scopes', []))}</code></p>
+<p><a href="{base_url}">Return to Amanat</a></p>
+</div></body></html>"""
+        return HTMLResponse(html)
 
     # Read the refresh token from the last login
     try:
@@ -305,11 +357,12 @@ chainlit_app.routes.insert(1, Route("/auth/connected-accounts/callback", connect
 chainlit_app.routes.insert(2, Route("/auth/connected-accounts/complete", connected_accounts_complete, methods=["POST"]))
 chainlit_app.routes.insert(3, Route("/disconnect/{service}", disconnect_service, methods=["GET"]))
 
-# Use demo mode when no Auth0 OAuth env vars are set
+# DEMO_MODE: no Auth0 at all (local dev without credentials)
+# DEMO_TOOLS: Auth0 login works, but tools use synthetic data (for deployed demo)
 DEMO_MODE = not os.environ.get("OAUTH_AUTH0_CLIENT_ID")
+DEMO_TOOLS = os.environ.get("DEMO_TOOLS", "").lower() in ("true", "1", "yes")
 
-# Tools that require user confirmation before execution
-REMEDIATION_TOOLS = {"revoke_sharing", "download_file", "delete_file"}
+# REMEDIATION_TOOLS imported from amanat.agent
 
 
 @cl.oauth_callback
@@ -337,85 +390,145 @@ async def oauth_callback(
 
 @cl.set_chat_profiles
 async def set_chat_profiles(current_user: cl.User | None = None):
+    if DEMO_TOOLS:
+        # Deployed demo: starters that work with synthetic data
+        return [
+            cl.ChatProfile(
+                name="Scan & Investigate",
+                markdown_description="Scan files, messages, and emails for data protection issues.",
+                icon="/public/icons/scan.svg",
+                starters=[
+                    cl.Starter(
+                        label="Scan files for PII exposure",
+                        message="Scan all files for sensitive data exposure, PII, oversharing, and policy violations.",
+                        icon="/public/icons/scan.svg",
+                    ),
+                    cl.Starter(
+                        label="Check messages for leaked data",
+                        message="Search messages for any content containing beneficiary names, case numbers, or medical information in public channels.",
+                        icon="/public/icons/message.svg",
+                    ),
+                    cl.Starter(
+                        label="Check data retention compliance",
+                        message="Which files have exceeded their data retention period? Flag any PII older than 12 months and special category data older than 6 months.",
+                        icon="/public/icons/policy.svg",
+                    ),
+                    cl.Starter(
+                        label="What is Amanat?",
+                        message="What can you help me with?",
+                        icon="/public/icons/shield.svg",
+                    ),
+                ],
+            ),
+            cl.ChatProfile(
+                name="Compliance",
+                markdown_description="Generate DPIAs, check consent, ask policy questions.",
+                icon="/public/icons/policy.svg",
+                starters=[
+                    cl.Starter(
+                        label="Generate a DPIA for biometric enrollment",
+                        message="We're starting a biometric enrollment program that collects fingerprints and iris scans for aid distribution. Generate a DPIA for this.",
+                        icon="/public/icons/policy.svg",
+                    ),
+                    cl.Starter(
+                        label="ICRC rules on data sharing",
+                        message="What does the ICRC Handbook say about sharing displaced person data with host governments? Do we need consent?",
+                        icon="/public/icons/policy.svg",
+                    ),
+                    cl.Starter(
+                        label="Check consent documentation",
+                        message="Check the consent documentation status for our displaced persons registry and biometric enrollment log. Are we compliant with ICRC requirements?",
+                        icon="/public/icons/policy.svg",
+                    ),
+                    cl.Starter(
+                        label="Rules for sharing data with donors",
+                        message="What are the rules for sharing displaced person data with donors like the Ambara Development Fund? What does GDPR say about this?",
+                        icon="/public/icons/policy.svg",
+                    ),
+                ],
+            ),
+        ]
+
+    # Live mode: full profiles with connect services and remediation
     return [
         cl.ChatProfile(
             name="Scan & Investigate",
-            markdown_description="**Read-only audit.** Scan files, messages, and emails for data protection issues.",
+            markdown_description="Scan files, messages, and emails for data protection issues.",
             icon="/public/icons/scan.svg",
             starters=[
                 cl.Starter(
-                    label="Full data governance scan",
-                    message="Scan my OneDrive files for data protection issues, then check Slack for leaked displaced person data, and scan Outlook for sensitive emails sent to external recipients.",
+                    label="Connect services",
+                    message="connect services",
+                    icon="/public/icons/shield.svg",
+                ),
+                cl.Starter(
+                    label="Scan OneDrive for PII exposure",
+                    message="I'm worried our field team has been sharing beneficiary data too openly. Can you scan our OneDrive for any files with PII that are publicly accessible?",
                     icon="/public/icons/scan.svg",
                 ),
                 cl.Starter(
-                    label="Scan Slack for PII leaks",
-                    message="Search Slack channels for messages containing displaced person names, case numbers, GPS coordinates, or medical information shared in public channels.",
+                    label="Check Slack for leaked data",
+                    message="Search Slack for any messages containing beneficiary names, case numbers, or medical information in public channels.",
                     icon="/public/icons/message.svg",
                 ),
                 cl.Starter(
-                    label="Scan emails for external PII",
-                    message="Search Outlook for emails containing displaced person data that were sent to external recipients or donor partners.",
-                    icon="/public/icons/message.svg",
-                ),
-                cl.Starter(
-                    label="Check data retention compliance",
-                    message="Which files have exceeded their data retention period? Check for PII older than 12 months and special category data older than 6 months.",
+                    label="Check data retention",
+                    message="Which of our files have exceeded their data retention period? Flag any PII older than 12 months and special category data older than 6 months.",
                     icon="/public/icons/policy.svg",
                 ),
             ],
         ),
         cl.ChatProfile(
             name="Remediate",
-            markdown_description="**Scan + act.** Detect risks then fix them — revoke sharing, redact PII, download locally.",
+            markdown_description="Find risks and fix them. Revoke sharing, redact PII, download locally.",
             icon="/public/icons/shield.svg",
             starters=[
                 cl.Starter(
-                    label="Full scan and remediation",
-                    message="Scan all files for sensitive data, then help me fix any issues you find — revoke oversharing, redact PII from files, and download critical data locally.",
-                    icon="/public/icons/scan.svg",
-                ),
-                cl.Starter(
                     label="Lock down public files",
-                    message="Find all publicly shared files containing PII and revoke their public links immediately.",
+                    message="Find all publicly shared files containing PII and revoke their sharing links.",
                     icon="/public/icons/shield.svg",
                 ),
                 cl.Starter(
-                    label="Redact file for safe sharing",
-                    message="I need to share the Upheaval displaced registry (doc-001) with the Hateno Development Fund. Redact all PII first so it's safe to share.",
+                    label="Prepare file for donor sharing",
+                    message="The Ambara Development Fund is requesting our displaced persons registry for their quarterly audit. Can you check what PII is in it and redact it for safe sharing?",
                     icon="/public/icons/shield.svg",
                 ),
                 cl.Starter(
-                    label="Evacuate sensitive data",
-                    message="Download all sensitive files locally and remove them from OneDrive.",
+                    label="Alert Slack about PII leak",
+                    message="Post a data protection alert to the #field-updates channel warning the team about PII we found in their messages.",
+                    icon="/public/icons/message.svg",
+                ),
+                cl.Starter(
+                    label="Download sensitive files locally",
+                    message="Download all sensitive files from OneDrive to local storage so we have a backup before making changes.",
                     icon="/public/icons/message.svg",
                 ),
             ],
         ),
         cl.ChatProfile(
             name="Compliance",
-            markdown_description="**Policy & compliance.** Generate DPIAs, check consent, ask policy questions.",
+            markdown_description="Generate DPIAs, check consent, ask policy questions.",
             icon="/public/icons/policy.svg",
             starters=[
                 cl.Starter(
-                    label="Generate a DPIA",
-                    message="Generate a Data Protection Impact Assessment for our biometric enrollment program that collects fingerprints and iris scans for supply distribution verification at Lookout Landing.",
+                    label="Generate a DPIA for biometric enrollment",
+                    message="We're starting a biometric enrollment program at Kanbaloh that collects fingerprints and iris scans for aid distribution. Generate a DPIA for this.",
+                    icon="/public/icons/policy.svg",
+                ),
+                cl.Starter(
+                    label="ICRC rules on data sharing",
+                    message="What does the ICRC Handbook say about sharing displaced person data with host governments? Do we need consent?",
                     icon="/public/icons/policy.svg",
                 ),
                 cl.Starter(
                     label="Check consent documentation",
-                    message="Check the consent status for our displaced persons registry (doc-001) and biometric enrollment log (doc-005). Are we compliant?",
+                    message="Check the consent documentation status for our displaced persons registry and biometric enrollment log. Are we compliant with ICRC requirements?",
                     icon="/public/icons/policy.svg",
                 ),
                 cl.Starter(
-                    label="GDPR compliance assessment",
-                    message="Are we GDPR and ICRC Handbook compliant in how we store and share displaced person case files? What needs to change?",
+                    label="Rules for sharing data with donors",
+                    message="What are the rules for sharing displaced person data with donors like the Ambara Development Fund? What does GDPR say about this?",
                     icon="/public/icons/policy.svg",
-                ),
-                cl.Starter(
-                    label="Data sharing with donors",
-                    message="What are the rules for sharing displaced person data with donors like the Hateno Development Fund? How do we share program data without exposing PII?",
-                    icon="/public/icons/scan.svg",
                 ),
             ],
         ),
@@ -432,7 +545,8 @@ async def on_start():
     _audit_log(session_id, "session_start", {"demo_mode": DEMO_MODE})
 
     # Initialize Token Vault
-    vault = Auth0TokenVault(demo_mode=DEMO_MODE)
+    # DEMO_TOOLS: Auth0 login works but tools use synthetic data
+    vault = Auth0TokenVault(demo_mode=DEMO_MODE or DEMO_TOOLS)
 
     user = cl.user_session.get("user")
     if user and not DEMO_MODE:
@@ -447,71 +561,14 @@ async def on_start():
             refresh_token=refresh_token,
         )
 
-        # Check which services are connected via Token Vault
-        connected = []
-        not_connected = []
-        for service, config in CONNECTIONS.items():
-            try:
-                vault.exchange_token(service)
-                display = _SERVICE_DISPLAY.get(service, {})
-                connected.append(f"{display.get('icon', '•')} **{display.get('name', service)}** — connected")
-            except Exception:
-                display = _SERVICE_DISPLAY.get(service, {})
-                not_connected.append(service)
-
-        # Build status message
-        consent = vault.get_consent_summary()
-        status_lines = [f"Authenticated as **{consent['user']}** ({consent['email']})"]
-        status_lines.append("")
-
-        if connected:
-            status_lines.append("**Connected services:**")
-            status_lines.extend(connected)
-            status_lines.append("")
-            status_lines.append("To disconnect a service: `/disconnect/{service}`")
-
-        if not_connected:
-            status_lines.append("")
-            status_lines.append("**Available to connect:**")
-            for svc in not_connected:
-                display = _SERVICE_DISPLAY.get(svc, {})
-                scopes = " ".join(CONNECTIONS[svc]["scopes"]) if svc in CONNECTIONS else ""
-                status_lines.append(
-                    f"{display.get('icon', '•')} **{display.get('name', svc)}** — "
-                    f"[Connect →](/connect/{svc}) *(scopes: `{scopes}`)*"
-                )
-
-        status_lines.append("")
-        status_lines.append("🔒 All analysis runs locally via IBM Granite 4 Micro. Your data never leaves this machine.")
-        status_lines.append("⚠️ High-stakes actions (deleting protected data) require out-of-band authorization via Auth0 Guardian.")
-
-        await cl.Message(
-            content="\n".join(status_lines),
-            author="Amanat",
-        ).send()
+        # Don't check Token Vault here — it creates a conversation and kills
+        # the starters screen. Tokens are checked on-demand when tools need them.
+        cl.user_session.set("connected_services", [])
+        cl.user_session.set("not_connected", list(CONNECTIONS.keys()))
+        # No message sent — starters screen shows cleanly.
     else:
         vault.create_session(user_id="demo", email="demo", name="Demo User")
-
-        # In demo mode, show quick-action buttons
-        actions = [
-            cl.Action(name="quick_action", payload={"action": "full_scan"}, label="Scan All Services"),
-            cl.Action(name="quick_action", payload={"action": "scan_onedrive"}, label="Scan OneDrive"),
-            cl.Action(name="quick_action", payload={"action": "scan_slack"}, label="Scan Slack"),
-            cl.Action(name="quick_action", payload={"action": "scan_outlook"}, label="Scan Outlook"),
-            cl.Action(name="quick_action", payload={"action": "retention"}, label="Retention Check"),
-            cl.Action(name="quick_action", payload={"action": "redact"}, label="Redact for Sharing"),
-            cl.Action(name="quick_action", payload={"action": "dpia"}, label="Generate DPIA"),
-            cl.Action(name="quick_action", payload={"action": "consent"}, label="Check Consent"),
-        ]
-
-        await cl.Message(
-            content=(
-                "**Amanat** — data governance for humanitarian organizations.\n\n"
-                "Choose a quick action below, or type anything to chat freely."
-            ),
-            author="Amanat",
-            actions=actions,
-        ).send()
+        # Don't send a message — let starters show.
 
     cl.user_session.set("vault", vault)
 
@@ -536,7 +593,7 @@ _QUICK_ACTION_MESSAGES = {
         "than 12 months and special category data older than 6 months."
     ),
     "redact": (
-        "I need to share the Upheaval displaced registry (doc-001) with the Hateno Development Fund. "
+        "I need to share the Cataclysm displaced registry (doc-001) with the Ambara Development Fund. "
         "Detect all PII and create a redacted version that's safe to share."
     ),
     "dpia": (
@@ -560,311 +617,380 @@ async def on_quick_action(action: cl.Action):
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    """Handle user messages — run the agent loop with visible tool steps."""
+    """Handle user messages with Strands agent + Chainlit tool call visibility."""
+    from strands.hooks.events import BeforeToolCallEvent, AfterToolCallEvent
+
     query = message.content
     session_id = cl.user_session.get("session_id", "unknown")
     profile = cl.user_session.get("chat_profile", "Scan")
     remediate_mode = profile == "Remediate"
+
+    # Handle "connect services" command
+    if query.strip().lower() in ("connect services", "connect", "connect my services"):
+        if DEMO_TOOLS:
+            lines = [
+                "**Connect your cloud services** (demo mode):\n",
+                '📁 <a href="/connect/onedrive" style="color:#14A89B;font-weight:600">Connect Microsoft</a> (OneDrive + Outlook)',
+                '💬 <a href="/connect/slack" style="color:#14A89B;font-weight:600">Connect Slack</a>',
+                "\nServices use synthetic humanitarian data in demo mode.",
+            ]
+            await cl.Message(content="\n".join(lines), author="Amanat").send()
+        else:
+            lines = [
+                "**Connect your cloud services:**\n",
+                '📁 <a href="/connect/onedrive" style="color:#14A89B;font-weight:600">Connect Microsoft</a> (OneDrive + Outlook)',
+                '💬 <a href="/connect/slack" style="color:#14A89B;font-weight:600">Connect Slack</a>',
+                "\nAfter connecting, start a **New Chat** to begin scanning.",
+            ]
+            await cl.Message(content="\n".join(lines), author="Amanat").send()
+        return
+
+    # Expand vague queries for Granite Micro
+    _QUERY_EXPANSIONS = {
+        "check all my files": "Scan all OneDrive files for sensitive data exposure, PII, oversharing, and policy violations.",
+        "audit everything": "Scan OneDrive files for PII and sharing violations, then search Slack for leaked beneficiary data, then search Outlook for sensitive emails sent externally.",
+        "is our data safe?": "Scan OneDrive for publicly shared files containing PII, then check Slack for leaked case numbers or medical data in public channels.",
+        "any problems?": "Scan OneDrive for data protection issues. Check for PII in publicly shared files, oversharing violations, and retention policy breaches.",
+        "what do you see?": "Scan OneDrive for all files and report any data governance issues. Check for PII exposure, sharing violations, or retention problems.",
+        "scan everything": "Scan OneDrive files for PII and sharing violations, then search Slack for leaked beneficiary data, then search Outlook for sensitive emails.",
+        "run a full audit": "Scan OneDrive files for PII and sharing violations, then search Slack for leaked beneficiary data, then search Outlook for sensitive emails sent externally.",
+        "scan outlook": "Search Outlook emails for messages containing beneficiary names, case numbers, or medical information. Check for PII sent to external recipients.",
+        "check outlook": "Search Outlook emails for messages containing beneficiary names, case numbers, or medical information. Check for PII sent to external recipients.",
+        "check emails": "Search Outlook emails for messages containing beneficiary names, case numbers, or medical information. Check for PII sent to external recipients.",
+        "scan slack": "Search Slack for messages containing beneficiary names, case numbers, or medical information in public channels.",
+        "check slack": "Search Slack for messages containing beneficiary names, case numbers, or medical information in public channels.",
+    }
+    query_lower = query.strip().lower().rstrip("?!.")
+    if query_lower in _QUERY_EXPANSIONS:
+        query = _QUERY_EXPANSIONS[query_lower]
+
     _audit_log(session_id, "user_message", {"query": query, "profile": profile})
 
-    # All tools always available — confirmation prompts gate destructive actions
-    active_tools = TOOLS
+    # Get Token Vault access tokens — each service has its own token.
+    # Store all available tokens so the scanner can pick the right one per service.
+    vault = cl.user_session.get("vault")
+    access_token = None
+    _service_tokens: dict[str, str] = {}
+    if vault and not vault.demo_mode:
+        for svc in ("onedrive", "slack", "outlook"):
+            try:
+                token_info = vault.get_token(svc)
+                _service_tokens[svc] = token_info.access_token
+            except Exception:
+                pass
+        # Use OneDrive token as default (most tools need it)
+        access_token = _service_tokens.get("onedrive") or _service_tokens.get("outlook")
 
-    # Build system prompt — inject policy documents only for policy questions,
-    # not scan queries (keeps prompt short for Granite Micro)
-    extra = _get_extra_instructions(query)
-    system_prompt = SYSTEM_PROMPT
-    if extra:
-        system_prompt = system_prompt + "\n\n" + "\n".join(extra)
+        # If no token available, check if the query needs a service and prompt to connect
+        if not access_token and not _service_tokens:
+            q_lower = query.lower()
+            needed = []
+            if any(w in q_lower for w in ("onedrive", "file", "scan", "drive", "gbv", "biometric", "document")):
+                needed.append(("Microsoft (OneDrive + Outlook)", "/connect/onedrive"))
+            if any(w in q_lower for w in ("slack", "channel", "message")):
+                needed.append(("Slack", "/connect/slack"))
+            if any(w in q_lower for w in ("outlook", "email", "mail")):
+                needed.append(("Microsoft (OneDrive + Outlook)", "/connect/onedrive"))
 
-    # Get conversation history
-    history = cl.user_session.get("messages", [])
+            if needed:
+                # Deduplicate
+                seen = set()
+                unique = []
+                for name, url in needed:
+                    if name not in seen:
+                        seen.add(name)
+                        unique.append((name, url))
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        *history,
-        {"role": "user", "content": query},
-    ]
+                links = "  ".join(
+                    f'<a href="{url}" style="display:inline-block;padding:6px 16px;background:#14A89B;color:#fff;border-radius:6px;text-decoration:none;font-weight:600">{name}</a>'
+                    for name, url in unique
+                )
+                await cl.Message(
+                    content=f"You need to connect a service first to run this query.\n\n{links}\n\nAfter connecting, start a new chat and try again.",
+                    author="Amanat",
+                ).send()
+                return
+
+    # Handle file uploads (drag-and-drop PDFs for Docling parsing)
+    if message.elements:
+        for el in message.elements:
+            if hasattr(el, "path") and el.path:
+                query += f"\n\nUploaded file at: {el.path}"
+
+    # Build system prompt with RAG documents for policy questions
+    system_prompt = _build_system_prompt(query)
+
+    # Check if provider supports tool calling
+    _provider_supports_tools = "openrouter" not in os.environ.get("OPENAI_API_BASE", "")
+
+    # If provider doesn't support tools (e.g. OpenRouter deployed demo),
+    # pre-execute relevant tools and inject results into the prompt
+    if not _provider_supports_tools and (DEMO_TOOLS or DEMO_MODE):
+        q_lower = query.lower()
+        tool_results = []
+        if any(w in q_lower for w in ("scan", "onedrive", "file", "check", "gbv", "biometric", "audit")):
+            tool_results.append(execute_tool("scan_files", {"service": "onedrive"}, access_token=None))
+        if any(w in q_lower for w in ("slack", "channel", "message")):
+            tool_results.append(execute_tool("search_messages", {"service": "slack", "query": "beneficiary OR case OR medical"}, access_token=None))
+        if any(w in q_lower for w in ("outlook", "email", "mail")):
+            tool_results.append(execute_tool("search_messages", {"service": "outlook", "query": "beneficiary OR case"}, access_token=None))
+        if any(w in q_lower for w in ("retention", "expired", "old")):
+            tool_results.append(execute_tool("retention_scan", {"service": "onedrive"}, access_token=None))
+        if any(w in q_lower for w in ("dpia", "impact assessment")):
+            tool_results.append(execute_tool("generate_dpia", {"activity": "humanitarian data processing", "data_types": "personal_identifier,special_category_data,biometric_data", "purpose": "beneficiary assistance"}, access_token=None))
+        if any(w in q_lower for w in ("consent", "compliant")):
+            tool_results.append(execute_tool("check_consent", {"file_id": "doc-001", "service": "onedrive"}, access_token=None))
+
+        if tool_results:
+            # Strip JSON, truncate, inject into prompt
+            results_text = "\n\n".join(
+                r.split("\n---JSON---")[0][:2000] if "---JSON---" in r else r[:2000]
+                for r in tool_results
+            )
+            system_prompt += f"\n\nTool results from scanning the user's services:\n\n{results_text}\n\nAnalyze these results and respond to the user's query."
+
+    # Create Strands agent
+    agent = create_agent(system_prompt=system_prompt, access_token=access_token,
+                         service_tokens=_service_tokens, demo_tools=DEMO_TOOLS)
 
     # TaskList for live progress
     task_list = cl.TaskList()
     task_list.status = "Running..."
     await task_list.send()
 
-    # Track all scan results for final visualization
+    # Track scan results for visualization
     all_scan_results = []
+    # Track open steps so we can close them in after_tool
+    _open_steps: dict[str, cl.Step] = {}
 
-    # Agent loop
-    for iteration in range(10):
-        try:
-            print(f"[Amanat] LLM call #{iteration}, {len(messages)} messages")
-            response = await cl.make_async(lambda: client.chat.completions.create(
-                model=MODEL,
-                messages=messages,
-                tools=active_tools,
-                tool_choice="auto",
-                temperature=0,
-                max_tokens=2048,
-            ))()
-        except Exception as e:
-            print(f"[Amanat] LLM ERROR: {e}")
-            await cl.Message(content=f"Error calling LLM: {e}", author="Amanat").send()
-            task_list.status = "Error"
-            await task_list.send()
-            return
+    # --- Strands hooks for Chainlit visibility ---
 
-        msg = response.choices[0].message
-        print(f"[Amanat] LLM response: finish={response.choices[0].finish_reason}, "
-              f"tool_calls={len(msg.tool_calls) if msg.tool_calls else 0}, "
-              f"content={msg.content[:100] if msg.content else '(none)'}")
+    # Capture the main event loop for cross-thread async calls
+    import asyncio
+    _main_loop = asyncio.get_event_loop()
 
-        # No tool calls — final response
-        if not msg.tool_calls:
-            # Mark task list done
-            task_list.status = "Done"
-            await task_list.send()
+    def _run_async(coro):
+        """Run an async coroutine from Strands' sync thread."""
+        future = asyncio.run_coroutine_threadsafe(coro, _main_loop)
+        return future.result(timeout=130)
 
-            # Build final message elements
-            elements = []
+    def before_tool(event: BeforeToolCallEvent):
+        """Show each tool call as a Chainlit step + confirmation gate."""
+        tool_name = event.tool_use.get("name", "unknown")
+        tool_args = event.tool_use.get("input", {})
+        tool_id = event.tool_use.get("toolUseId", "")
 
-            # Generate risk chart if we have scan results
-            if all_scan_results:
-                chart = _build_risk_chart(all_scan_results)
-                if chart:
-                    elements.append(chart)
+        step_name = _friendly_step_name(tool_name, tool_args)
 
-                df_el = _build_results_table(all_scan_results)
-                if df_el:
-                    elements.append(df_el)
-
-            final_content = msg.content or "Analysis complete."
-            _audit_log(session_id, "agent_response", {
-                "response": final_content[:2000],
-                "scan_results_count": len(all_scan_results),
-            })
-
-            # In Scan mode, offer remediation actions on risky files
-            actions = []
-            if not remediate_mode:
-                risky = [f for f in all_scan_results
-                         if f.get("risk_level") == "critical"
-                         and f.get("sharing") in ("anyone_with_link", "org_wide")]
-                for f in risky[:5]:
-                    actions.append(cl.Action(
-                        name="suggest_remediate",
-                        payload={"file_id": f["file_id"], "name": f["name"]},
-                        label=f"Fix: {f['name'][:30]}",
-                        description=f"Switch to Remediate mode to fix {f['name']}",
-                    ))
-
-            # In Remediate mode, attach action buttons for risky files
-            if remediate_mode:
-                risky = [f for f in all_scan_results
-                         if f.get("risk_level") == "critical"
-                         and f.get("sharing") in ("anyone_with_link", "org_wide")]
-                for f in risky[:5]:
-                    actions.extend([
-                        cl.Action(
-                            name="action_revoke",
-                            payload={"file_id": f["file_id"], "name": f["name"]},
-                            label=f"Revoke: {f['name'][:25]}",
-                            description=f"Revoke public sharing on {f['name']}",
-                        ),
-                        cl.Action(
-                            name="action_download",
-                            payload={"file_id": f["file_id"], "name": f["name"]},
-                            label=f"Download: {f['name'][:25]}",
-                            description=f"Download {f['name']} locally",
-                        ),
-                    ])
-
-            final = cl.Message(
-                content=final_content,
-                author="Amanat",
-                elements=elements,
-                actions=actions,
-            )
-            await final.send()
-
-            # Save full conversation (including tool calls) to history
-            # so follow-up messages like "go ahead and delete" have context
-            new_messages = [m for m in messages[1:] if m not in history]  # skip system prompt
-            history.extend(new_messages)
-            cl.user_session.set("messages", history[-30:])
-            cl.user_session.set("scan_results", all_scan_results)
-            return
-
-        # Process tool calls with visible steps + task list
-        messages.append(msg.model_dump())
-
-        for tool_call in msg.tool_calls:
-            fn_name = tool_call.function.name
-            try:
-                fn_args = json.loads(tool_call.function.arguments)
-            except json.JSONDecodeError:
-                fn_args = {}
-
-            # Get Token Vault access token for live API calls
-            vault = cl.user_session.get("vault")
-            access_token = None
-            if vault and not vault.demo_mode:
-                service = fn_args.get("service", "")
-                # Map service names to Token Vault connection names
-                token_service = {
-                    "onedrive": "onedrive",
-                    "slack": "slack",
-                    "outlook": "outlook",
-                    "gmail": "outlook",  # Gmail queries route to Outlook/Graph
-                }.get(service)
-                if token_service:
-                    try:
-                        token_info = vault.get_token(token_service)
-                        access_token = token_info.access_token
-                        print(f"[Amanat] Token for {token_service}: OK ({access_token[:10]}...)")
-                    except Exception as e:
-                        print(f"[Amanat] Token for {token_service}: FAILED ({e})")
-                        pass
-
-            # Authorization for destructive actions
-            if fn_name in REMEDIATION_TOOLS:
-                file_id = fn_args.get("file_id", "unknown")
-                file_name = fn_args.get("name", file_id)
-                action_label = {
-                    "revoke_sharing": "revoke sharing on",
-                    "download_file": "download",
-                    "delete_file": "delete",
-                }.get(fn_name, fn_name)
-
-                # Check if this file requires CIBA (out-of-band authorization)
-                ciba_required, data_category = requires_ciba(file_name, file_id)
-                user = cl.user_session.get("user")
-                user_id = user.identifier if user else None
-
-                if ciba_required and user_id and not DEMO_MODE:
-                    # High-stakes file — use CIBA for out-of-band authorization
-                    await cl.Message(
-                        content=(
-                            f"⚠️ **CIBA Authorization Required**\n\n"
-                            f"This file contains **{data_category}**. "
-                            f"An approval request has been sent to your registered device.\n\n"
-                            f"**Action:** {action_label} `{file_name}`\n\n"
-                            f"Check your Auth0 Guardian app or email to approve or deny."
-                        ),
-                        author="Amanat",
-                    ).send()
-                    _audit_log(session_id, "ciba_initiated", {
-                        "tool": fn_name, "file": file_name, "category": data_category,
-                    })
-                    try:
-                        await request_ciba_authorization(
-                            user_id=user_id,
-                            action_description=action_label,
-                            file_name=file_name,
-                            data_category=data_category,
-                        )
-                        _audit_log(session_id, "ciba_approved", {"file": file_name})
-                        await cl.Message(
-                            content=f"✅ **Authorization approved.** Proceeding with {action_label} `{file_name}`.",
-                            author="Amanat",
-                        ).send()
-                    except PermissionError:
-                        _audit_log(session_id, "ciba_denied", {"file": file_name})
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": json.dumps({"status": "denied", "message": "User denied CIBA authorization."}),
-                        })
-                        await cl.Message(
-                            content=f"🚫 **Authorization denied.** {action_label} `{file_name}` was not approved.",
-                            author="Amanat",
-                        ).send()
-                        continue
-                    except (TimeoutError, RuntimeError) as e:
-                        # CIBA not configured or timed out — fall back to in-UI confirm
-                        print(f"[Amanat] CIBA fallback: {e}")
-                        _audit_log(session_id, "ciba_fallback", {"reason": str(e)})
-                        res = await cl.AskActionMessage(
-                            content=f"**Confirm:** {action_label} `{file_name}`? (CIBA unavailable — confirming in-UI)",
-                            actions=[
-                                cl.Action(name="confirm", payload={"value": "yes"}, label="Yes, proceed"),
-                                cl.Action(name="cancel", payload={"value": "no"}, label="Cancel"),
-                            ],
-                            timeout=120,
-                        ).send()
-                        if not res or res.get("payload", {}).get("value") != "yes":
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": json.dumps({"status": "cancelled", "message": "User cancelled."}),
-                            })
-                            continue
-                else:
-                    # Standard file or demo mode — use in-UI confirmation
-                    res = await cl.AskActionMessage(
-                        content=f"**Confirm:** {action_label} `{file_name}`?",
-                        actions=[
-                            cl.Action(name="confirm", payload={"value": "yes"}, label="Yes, proceed"),
-                            cl.Action(name="cancel", payload={"value": "no"}, label="Cancel"),
-                        ],
-                        timeout=120,
-                    ).send()
-
-                    if not res or res.get("payload", {}).get("value") != "yes":
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": json.dumps({"status": "cancelled", "message": "User cancelled this action."}),
-                        })
-                        continue
-
-            # Add task to task list
-            step_name = _friendly_step_name(fn_name, fn_args)
+        # Create Chainlit step
+        async def _show_step():
+            step = cl.Step(name=step_name, type="tool")
+            step.input = json.dumps(tool_args, indent=2)
+            await step.send()
+            _open_steps[tool_id] = step
             task = cl.Task(title=step_name, status=cl.TaskStatus.RUNNING)
             await task_list.add_task(task)
             await task_list.send()
 
-            # Show tool call as a collapsible step
-            async with cl.Step(name=step_name, type="tool") as step:
-                step.input = json.dumps(fn_args, indent=2)
-                print(f"[Amanat] Executing {fn_name}({fn_args}) live={access_token is not None}")
-                result = execute_tool(fn_name, fn_args, access_token=access_token)
-                print(f"[Amanat] Result: {len(result)} chars")
-                step.output = _summarize_result(fn_name, result)
-                _audit_log(session_id, "tool_call", {
-                    "tool": fn_name, "args": fn_args,
-                    "live": access_token is not None,
-                    "result_len": len(result),
-                    "result_text": result.split("\n---JSON---")[0][:500],
-                })
+        try:
+            _run_async(_show_step())
+        except Exception:
+            pass
 
-            # Track scan results for visualization (parse JSON from tool output)
-            if fn_name == "scan_files" and "---JSON---" in result:
-                try:
-                    json_part = result.split("---JSON---", 1)[1].strip()
-                    result_data = json.loads(json_part)
-                    if "results" in result_data:
-                        all_scan_results.extend(result_data["results"])
-                except (json.JSONDecodeError, IndexError):
-                    pass
+        # Confirmation gate: always ask before revoke/delete
+        if tool_name in ("delete_file", "revoke_sharing"):
+            file_id = tool_args.get("file_id", "unknown")
+            action_label = tool_name.replace("_", " ")
 
-            # Mark task done
-            task.status = cl.TaskStatus.DONE
-            await task_list.send()
+            async def _ask():
+                res = await cl.AskActionMessage(
+                    content=f"**Confirm:** {action_label} `{file_id[:40]}`?",
+                    actions=[
+                        cl.Action(name="confirm", payload={"value": "yes"}, label="Approve"),
+                        cl.Action(name="cancel", payload={"value": "no"}, label="Deny"),
+                    ],
+                    timeout=120,
+                ).send()
+                return res and res.get("payload", {}).get("value") == "yes"
 
-            # Send only the text portion to the LLM (strip JSON to keep context small)
-            llm_content = result.split("\n---JSON---")[0] if "---JSON---" in result else result
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": llm_content,
-            })
+            try:
+                approved = _run_async(_ask())
+            except Exception:
+                approved = True
 
+            if not approved:
+                _audit_log(session_id, "remediation_denied", {"tool": tool_name, "file_id": file_id})
+                event.tool_use["input"] = {}
+                return
+
+            _audit_log(session_id, "remediation_approved", {"tool": tool_name, "file_id": file_id})
+
+            # Download before delete
+            if tool_name == "delete_file" and access_token:
+                for fid in file_id.split(","):
+                    fid = fid.strip()
+                    if fid:
+                        service = tool_args.get("service", "onedrive")
+                        execute_tool("download_file", {"file_id": fid, "service": service},
+                                     access_token=access_token)
+
+        _audit_log(session_id, "tool_call_start", {
+            "tool": tool_name, "args": tool_args,
+        })
+
+    def after_tool(event: AfterToolCallEvent):
+        """Close Chainlit step, extract scan results for charts."""
+        tool_name = event.tool_use.get("name", "unknown")
+        tool_id = event.tool_use.get("toolUseId", "")
+        result = event.result
+
+        # Extract text from result
+        result_text = ""
+        if isinstance(result, dict):
+            content = result.get("content", [])
+            for block in content:
+                if isinstance(block, dict) and "text" in block:
+                    result_text += block["text"]
+
+        # Track scan results for visualization
+        if tool_name == "scan_files" and "---JSON---" in result_text:
+            try:
+                json_part = result_text.split("---JSON---", 1)[1].strip()
+                result_data = json.loads(json_part)
+                if "results" in result_data:
+                    all_scan_results.extend(result_data["results"])
+            except (json.JSONDecodeError, IndexError):
+                pass
+
+        # Close Chainlit step
+        async def _close_step():
+            step = _open_steps.pop(tool_id, None)
+            if step:
+                step.output = _summarize_result(tool_name, result_text)
+                await step.update()
+            if task_list.tasks:
+                task_list.tasks[-1].status = cl.TaskStatus.DONE
+                await task_list.send()
+
+        try:
+            _run_async(_close_step())
+        except Exception:
+            pass
+
+        _audit_log(session_id, "tool_call_end", {
+            "tool": tool_name,
+            "result_len": len(result_text),
+            "result_preview": result_text[:300],
+        })
+
+    # Register hooks
+    agent.hooks.add_callback(BeforeToolCallEvent, before_tool)
+    agent.hooks.add_callback(AfterToolCallEvent, after_tool)
+
+    # Run agent (Strands agent is synchronous, wrap for async Chainlit)
+    try:
+        result = await cl.make_async(lambda: agent(query))()
+
+        # Extract final answer
+        final_content = "Analysis complete."
+        if result.message and result.message.get("content"):
+            for block in result.message["content"]:
+                if isinstance(block, dict) and "text" in block:
+                    final_content = block["text"]
+                    break
+
+    except Exception as e:
+        final_content = f"Error: {e}"
+        print(f"[Amanat] Error: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # Mark task list done
     task_list.status = "Done"
     await task_list.send()
-    await cl.Message(content="Reached maximum analysis depth.", author="Amanat").send()
+
+    # Build final message with visualizations
+    elements = []
+    if all_scan_results:
+        chart = _build_risk_chart(all_scan_results)
+        if chart:
+            elements.append(chart)
+        df_el = _build_results_table(all_scan_results)
+        if df_el:
+            elements.append(df_el)
+
+    _audit_log(session_id, "agent_response", {
+        "response": final_content[:2000],
+        "scan_results_count": len(all_scan_results),
+    })
+
+    # Build action buttons for risky files
+    actions = []
+    risky = [f for f in all_scan_results
+             if f.get("risk_level") == "critical"
+             and f.get("sharing") in ("anyone_with_link", "org_wide")]
+    if not remediate_mode:
+        for f in risky[:5]:
+            actions.append(cl.Action(
+                name="suggest_remediate",
+                payload={"file_id": f["file_id"], "name": f["name"]},
+                label=f"Fix: {f['name'][:30]}",
+            ))
+    else:
+        for f in risky[:5]:
+            actions.extend([
+                cl.Action(
+                    name="action_revoke",
+                    payload={"file_id": f["file_id"], "name": f["name"]},
+                    label=f"Revoke: {f['name'][:25]}",
+                ),
+                cl.Action(
+                    name="action_download",
+                    payload={"file_id": f["file_id"], "name": f["name"]},
+                    label=f"Download: {f['name'][:25]}",
+                ),
+            ])
+
+    await cl.Message(
+        content=final_content,
+        author="Amanat",
+        elements=elements,
+        actions=actions,
+    ).send()
+
+    cl.user_session.set("scan_results", all_scan_results)
 
 
 # --- Action callbacks ---
+
+@cl.action_callback("connect_service_action")
+async def on_connect_service(action: cl.Action):
+    """Handle connect service button click — redirect to Token Vault OAuth flow."""
+    service = action.payload["service"]
+    display = _SERVICE_DISPLAY.get(service, {})
+    name = display.get("name", service)
+    await cl.Message(
+        content=f"{display.get('icon', '•')} Opening **{name}** connection flow... [Click here if not redirected](/connect/{service})",
+        author="Amanat",
+    ).send()
+
+
+@cl.action_callback("disconnect_service")
+async def on_disconnect(action: cl.Action):
+    """Handle disconnect service button click."""
+    service = action.payload["service"]
+    display = _SERVICE_DISPLAY.get(service, {})
+    name = display.get("name", service)
+
+    vault = cl.user_session.get("vault")
+    if vault:
+        vault.revoke_service(service)
+
+    await cl.Message(
+        content=f"{display.get('icon', '•')} **{name}** disconnected. [Reconnect](/connect/{service})",
+        author="Amanat",
+    ).send()
+
 
 @cl.action_callback("action_revoke")
 async def on_revoke(action: cl.Action):
@@ -943,6 +1069,18 @@ async def on_suggest_remediate(action: cl.Action):
         content=f"To fix **{name}**, start a new chat in **Remediate** mode (use the profile switcher at the top).",
         author="Amanat",
     ).send()
+
+
+# --- Session cleanup ---
+
+@cl.on_chat_end
+async def on_end():
+    """Clear sensitive data from the session when the chat ends."""
+    cl.user_session.set("scan_results", [])
+    cl.user_session.set("messages", [])
+    vault = cl.user_session.get("vault")
+    if vault:
+        vault._session = None
 
 
 # --- Visualization helpers ---

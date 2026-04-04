@@ -3,10 +3,10 @@
 user_env = []
 
 # Duration (in seconds) during which the session is saved when the connection is lost
-session_timeout = 3600
+session_timeout = 300
 
 # Duration (in seconds) of the user session expiry
-user_session_timeout = 1296000  # 15 days
+user_session_timeout = 3600
 
 # Enable third parties caching (e.g., LangChain cache)
 cache = false
@@ -24,7 +24,7 @@ allow_origins = ["*"]
 
 [features]
 # Process and display HTML in messages. This can be a security risk (see https://stackoverflow.com/questions/19603097/why-is-it-dangerous-to-render-user-generated-html-or-javascript)
-unsafe_allow_html = false
+unsafe_allow_html = true
 
 # Process and display mathematical expressions. This can clash with "$" characters in messages.
 latex = false
@@ -117,14 +117,14 @@ default_sidebar_state = "closed"
 confirm_new_chat = true
 
 # Description of the assistant. This is used for HTML tags.
-description = "Amanat — Your data is our amanat"
+description = "Amanat — Data Governance AI Agent for Humanitarian NGOs"
 
 # Chain of Thought (CoT) display mode. Can be "hidden", "tool_call" or "full".
 cot = "tool_call"
 
 # Specify a CSS file that can be used to customize the user interface.
 # The CSS file can be served from the public directory or via an external link.
-# custom_css = "/public/test.css"
+custom_css = "/public/custom.css"
 
 # Specify additional attributes for a custom CSS file
 # custom_css_attributes = "media=\"print\""
@@ -139,12 +139,9 @@ alert_style = "classic"
 # Specify additional attributes for custom JS file
 # custom_js_attributes = "async type = \"module\""
 
-# Custom login page image, relative to public directory or external URL
-# login_page_image = "/public/custom-background.jpg"
-
-# Custom login page image filter (Tailwind internal filters, no dark/light variants)
-# login_page_image_filter = "brightness-50 grayscale"
-# login_page_image_dark_filter = "contrast-200 blur-sm"
+login_page_image = "/public/login_bg.svg"
+login_page_image_filter = "brightness-100"
+login_page_image_dark_filter = "brightness-100"
 
 # Specify a custom meta URL (used for meta tags like og:url)
 # custom_meta_url = "https://github.com/Chainlit/chainlit"

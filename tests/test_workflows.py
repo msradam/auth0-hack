@@ -39,8 +39,8 @@ class TestRedaction:
 
         # The redacted content should not contain original PII
         redacted = data["redacted_content"]
-        assert "Rozel Tidecrest" not in redacted
-        assert "100-26C00891" not in redacted
+        assert "Rozel al-Bahar" not in redacted
+        assert "WAQ-26C00891" not in redacted
         assert "+471-55-555-1234" not in redacted
         assert "47.3821" not in redacted
         assert "PTSD" not in redacted
@@ -77,21 +77,21 @@ class TestRedaction:
 
         assert data["status"] == "success"
         # Should redact the email and names
-        assert "paya.kakariko@hrc-hyrule.org" not in data["redacted_content"]
+        assert "paya.majala@wra-waqwaq.org" not in data["redacted_content"]
 
     def test_redact_function_directly(self):
         """Test the redact_pii_in_text function independently."""
-        text = "Contact Rozel Tidecrest at +471-55-555-1234. Case: 100-26C00891"
+        text = "Contact Rozel al-Bahar at +471-55-555-1234. Case: WAQ-26C00891"
         redacted, redactions = redact_pii_in_text(text)
 
-        assert "Rozel Tidecrest" not in redacted
+        assert "Rozel al-Bahar" not in redacted
         assert "+471-55-555-1234" not in redacted
-        assert "100-26C00891" not in redacted
+        assert "WAQ-26C00891" not in redacted
         assert len(redactions) > 0
 
     def test_redact_idempotent(self):
         """Redacting already-redacted text should produce no new redactions."""
-        text = "Name: Rozel Tidecrest, Phone: +471-55-555-1234"
+        text = "Name: Rozel al-Bahar, Phone: +471-55-555-1234"
         redacted_once, _ = redact_pii_in_text(text)
         redacted_twice, redactions_2 = redact_pii_in_text(redacted_once)
 

@@ -1,9 +1,5 @@
 # amanat
 
-Scans your connected services for sensitive beneficiary data that may be overshared, improperly stored, or exposed.
+Privacy-first data governance agent for humanitarian organizations. Scan files, messages, and emails for sensitive data exposure, then remediate with one click.
 
-All analysis runs locally. Beneficiary data never leaves your machine.
-
----
-
-**Powered by** IBM Granite 4 Micro (local) + Auth0 Token Vault + GDPR/ICRC standards
+Select a starter below to begin, or type your own query.

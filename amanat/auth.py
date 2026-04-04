@@ -20,11 +20,11 @@ from dataclasses import dataclass, field
 CONNECTIONS = {
     "onedrive": {
         "connection": "microsoft-graph",
-        "scopes": ["Files.Read", "Files.ReadWrite", "offline_access"],
+        "scopes": ["Files.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send", "offline_access"],
     },
     "outlook": {
         "connection": "microsoft-graph",
-        "scopes": ["Mail.Read", "offline_access"],
+        "scopes": ["Files.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send", "offline_access"],
     },
     "slack": {
         "connection": "sign-in-with-slack",
@@ -93,9 +93,9 @@ class Auth0TokenVault:
         if self.demo_mode:
             self._session = UserSession(
                 user_id="demo|12345",
-                email="josha@hrc-hyrule.org",
-                name="Josha Deepdelve",
-                org="Hyrule Restoration Commission",
+                email="maryam@wra-waqwaq.org",
+                name="Maryam Ghaws",
+                org="Waqwaq Relief Authority",
                 connected_services=["onedrive", "slack"],
                 tokens={
                     "slack": TokenInfo(
