@@ -174,17 +174,20 @@ Example: the query "Can we share biometric data with host governments?" retrieve
 
 ### IBM Granite 4 Micro
 
-Granite 4.0 Micro is a 3B-parameter dense transformer model designed for edge deployment (IBM, 2025). Key properties for this use case:
+Granite 4.0 Micro is a 3B-parameter dense transformer model released under Apache 2.0 (IBM, 2025). It is the first open-source LLM family to achieve ISO 42001 certification -- the international standard for AI management systems covering accountability, explainability, and data privacy. Key properties for this use case:
 
-- **Small footprint**: 3B parameters run comfortably on consumer hardware via llama.cpp quantization
+- **Apache 2.0 license**: no licensing barriers for humanitarian organizations, no usage restrictions, no royalties. Any NGO can deploy it freely.
+- **Small footprint**: 3B parameters run in ~4GB RAM via llama.cpp quantization. Deployable on a laptop in a field office -- no GPU, no cloud, no internet required.
 - **Native function calling** with structured JSON output. The agent loop is driven by Strands Agents SDK, which provides native tool-call lifecycle hooks (BeforeToolCallEvent, AfterToolCallEvent) for Chainlit UI integration and confirmation dialog interception.
-- **Multilingual**: English, Arabic, French, Spanish, Japanese, Korean, Chinese, and 5 other languages, which is critical for humanitarian contexts
-- **128K validated context** with 512K training length, sufficient for large policy documents and scan results
-- Runs locally via llama-server (llama.cpp) on consumer hardware. No GPU required.
+- **Multilingual**: English, Arabic, French, Spanish, Japanese, Korean, Chinese, and 5 other languages -- critical for humanitarian contexts where beneficiaries speak the languages enterprise LLMs handle worst.
+- **128K validated context** with 512K training length, sufficient for large policy documents and scan results.
+- **Published training data sources**: IBM discloses the 14 data sources used for pre-training. All model checkpoints are cryptographically signed for supply-chain verification.
+
+This matters because ICRC data protection rules (Articles 23-24) impose strict conditions on transferring personal data to third-party processors -- any recipient must contractually prove adequacy and purpose limitation. Sending beneficiary data to a commercial LLM API (OpenAI, Anthropic, Google) creates a third-party processing relationship that is difficult to justify under ICRC rules. A local model eliminates the question entirely: the data never leaves the device.
 
 ### IBM Docling + granite-docling-258M
 
-Field documents are often scanned: printed intake forms, hand-filled registration sheets, faxed protection assessments. These arrive as image-only PDFs with no embedded text layer.
+Docling (MIT license, hosted by LF AI & Data Foundation) and its companion model granite-docling-258M (Apache 2.0) handle document parsing. Field documents are often scanned: printed intake forms, hand-filled registration sheets, faxed protection assessments. These arrive as image-only PDFs with no embedded text layer.
 
 Docling's standard pipeline handles embedded-text documents (CSV, DOCX, XLSX). For image-only PDFs, the granite-docling-258M VLM pipeline provides OCR with table structure recognition (0.96 TEDS score). On Apple Silicon, the MLX backend accelerates inference.
 
@@ -244,7 +247,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **The Rohingya scenario could have been caught by this tool.** If UNHCR field staff had something like Amanat scanning their shared drives, it would have flagged the biometric enrollment data as publicly accessible special-category data, cited ICRC Handbook Chapter 8 and GDPR Article 9, and required explicit confirmation before any sharing changes. The demo shows exactly this with the Waqwaq scenario.
 
-**Fully local AI.** No beneficiary data ever touches a cloud LLM API. Granite 4 Micro runs on a laptop via llama-server. The entire stack (LLM, document parser, PII detector, policy database) is containerizable for offline field deployment. I built a Containerfile that proves it.
+**Fully local, fully open-source AI.** No beneficiary data ever touches a cloud LLM API. The entire stack is Apache 2.0 or MIT licensed: Granite 4 Micro (Apache 2.0, ISO 42001 certified), Docling (MIT), llama.cpp (MIT), Strands SDK (Apache 2.0). An NGO can deploy this without a single vendor dependency, licensing fee, or data processing agreement. I built a Containerfile that packages everything for offline field deployment.
 
 **PII never reaches the LLM.** Tool results are redacted before being returned to the agent. Granite sees `[NAME REDACTED]` and `[CASE# REDACTED]`, never raw beneficiary data. The unredacted data only shows up in the Chainlit UI steps, visible to the authenticated user. Even if someone managed a prompt injection attack, there's no PII in context for the model to leak.
 
