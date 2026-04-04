@@ -4,7 +4,13 @@ Author: Adam Munawar Rahman, April 2026
 
 Amanat scans an NGO's connected cloud services (OneDrive, Slack, Outlook) for sensitive beneficiary data that may be overshared, improperly stored, or exposed, then helps fix it. All analysis runs locally via IBM Granite 4 Micro. Beneficiary data never leaves the user's machine.
 
-*Amanat* (Arabic/Urdu/Bengali: trust, stewardship), the concept that what is entrusted to you must be protected and returned faithfully.
+*Amanat* (Arabic: trust, stewardship), the concept that what is entrusted to you must be protected and returned faithfully.
+
+---
+
+## Demo Video
+
+The 3-minute demo video shows Amanat running locally against my personal Microsoft 365 and Slack accounts, connected via Auth0 Token Vault. The OneDrive folders, Outlook inbox, and Slack workspace shown in the video are real accounts populated with synthetic humanitarian data from the Waqwaq scenario. All scans, remediations, and alerts execute live against the Microsoft Graph and Slack APIs. The video is sped up in places to fit the 3-minute window.
 
 ---
 
@@ -194,26 +200,29 @@ Integration: when the OneDrive scanner downloads a binary document format (PDF, 
 ### Agent Architecture
 
 ```
-                         Auth0
-                      ┌──────────────────────────┐
-                      │  Universal Login         │
-            ┌────────►│  Token Vault             │
-            │         └────────────┬─────────────┘
-            │                      │ federated access tokens
-┌───────────┴───┐     ┌───────────▼───────────────┐     ┌────────────────┐
-│   Chainlit    │◄───►│        Amanat             │◄───►│  IBM Granite 4 │
-│   Web UI      │     │                           │     │  Micro (local) │
-│               │     │  Strands Agents SDK       │     │  llama-server  │
-│  • OAuth      │     │  ┌─ Regex PII detector    │     │  port 8080     │
-│  • Steps      │     │  ├─ LLM PII detector      │     └────────────────┘
-│  • Charts     │     │  ├─ Policy RAG (BM25)     │
-│  • Actions    │     │  ├─ Rules engine          │     ┌─────────────────┐
-│  • Confirm    │     │  └─ Docling OCR           │◄───►│  IBM Docling    │
-└───────────────┘     └───────────┬───────────────┘     │  granite-258M   │
-                                  │                     └─────────────────┘
-                           ┌──────┼──────┐
-                           ▼      ▼      ▼
-                       OneDrive Outlook Slack
++--------------+    +---------------------+    +-----------------+
+|  Chainlit    |    |       Auth0         |    | IBM Granite 4   |
+|  Web UI      |    |  Universal Login    |    | Micro (local)   |
+|              |    |  Token Vault        |    | llama-server    |
+|  OAuth       |    |  Guardian MFA       |    | port 8080       |
+|  Steps       |    +----------+----------+    +--------+--------+
+|  Charts      |               |                        |
+|  Confirm     |    federated access tokens              |
++------+-------+               |                        |
+       |            +----------v----------+              |
+       +----------->|      Amanat        |<-------------+
+                    |                     |
+                    | Strands Agents SDK  |    +-----------------+
+                    | Regex PII detector  |    | IBM Docling     |
+                    | LLM PII detector    |<-->| granite-258M    |
+                    | Policy RAG (BM25)   |    | OCR + tables    |
+                    | Rules engine        |    +-----------------+
+                    +----------+----------+
+                               |
+                    +----------+----------+
+                    |          |          |
+                    v          v          v
+                 OneDrive   Outlook    Slack
 ```
 
 ## Challenges I Ran Into
@@ -331,12 +340,6 @@ Auth0 Token Vault solved the credential management problem I did not want to sol
 **What I would tell another agent developer:** do not build token management yourself. The refresh logic, the expiry handling, the per-service scoping, the user consent UI, the disconnect flow, the token rotation, all of it is infrastructure that Token Vault handles and that you will get wrong if you implement it from scratch. I spent my time on PII detection and policy grounding instead of writing a token database. That was the right trade.
 
 The pattern generalizes beyond humanitarian data. Any AI agent that touches multiple services on behalf of a user (CRM + email + calendar, or cloud storage + messaging + analytics) faces the same multi-provider OAuth problem. Token Vault's federated exchange is the correct abstraction: one identity provider, per-service consent, scoped tokens, automatic refresh, user-controlled disconnect. Build your agent logic. Let Auth0 handle the credentials.
-
----
-
-## Demo Video
-
-The 3-minute demo video shows Amanat running locally against my personal Microsoft 365 and Slack accounts, connected via Auth0 Token Vault. The OneDrive folders, Outlook inbox, and Slack workspace shown in the video are real accounts populated with synthetic humanitarian data from the Waqwaq scenario. All scans, remediations, and alerts execute live against the Microsoft Graph and Slack APIs. The video is sped up in places to fit the 3-minute window.
 
 ## Built With
 
