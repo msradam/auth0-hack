@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL_PATH="${MODEL_PATH:-/models/granite-4.0-micro-Q4_K_M.gguf}"
+MODEL_PATH="${MODEL_PATH:-/models/granite-4.0-micro-Q4_K_S.gguf}"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
 CHAINLIT_PORT="${CHAINLIT_PORT:-8000}"
 
@@ -15,8 +15,9 @@ llama-server \
     --model "${MODEL_PATH}" \
     --port "${LLAMA_PORT}" \
     --host 0.0.0.0 \
-    --ctx-size 4096 \
+    --ctx-size 2048 \
     --n-gpu-layers 0 \
+    --mlock \
     2>&1 | sed 's/^/[llama] /' &
 
 LLAMA_PID=$!
