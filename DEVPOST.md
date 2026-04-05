@@ -14,17 +14,11 @@ The 3-minute demo video shows Amanat running locally against my personal Microso
 
 ## Screenshots
 
-![Auth0 Universal Login with Guardian MFA](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/01_auth0_login.png)
+![Revoke sharing on GBV files — confirmation dialog blocks the agent until user approves](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/09_revoke_sharing_gbv.png)
 
-![Outlook scan finds PII violations, sends alert emails](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/02_outlook_scan_email_alert.png)
+![Outlook scan finds PII violations, sends alert emails via Token Vault](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/02_outlook_scan_email_alert.png)
 
-![Slack scan summary with affected channels](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/03_slack_scan_summary.png)
-
-![Revoke sharing on GBV files with confirmation dialog](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/09_revoke_sharing_gbv.png)
-
-![PII redaction results — 47 instances across 6 categories](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/05_redaction_result.png)
-
-![Policy RAG citing ICRC Handbook chapters](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/08_policy_rag_icrc.png)
+![Policy RAG citing ICRC Handbook chapters from source PDFs](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/08_policy_rag_icrc.png)
 
 ## Published App
 
