@@ -18,7 +18,6 @@ audit-logs/
 
 # Build artifacts
 node_modules/
-uv.lock
 
 # Dev workspace
 assets/editing/
