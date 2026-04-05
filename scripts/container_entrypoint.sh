@@ -17,6 +17,7 @@ llama-server \
     --host 0.0.0.0 \
     --ctx-size 2048 \
     --n-gpu-layers 0 \
+    --jinja \
     2>&1 &
 
 LLAMA_PID=$!
