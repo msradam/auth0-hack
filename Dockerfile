@@ -40,8 +40,8 @@ RUN pip install --no-cache-dir -r requirements-railway.txt
 COPY . .
 
 # Download model at build time (cached in Docker layer)
-ARG MODEL_REPO=lmstudio-community/granite-4.0-tiny-preview-GGUF
-ARG MODEL_FILE=granite-4.0-tiny-preview-Q4_K_M.gguf
+ARG MODEL_REPO=lmstudio-community/granite-4.0-micro-GGUF
+ARG MODEL_FILE=granite-4.0-micro-Q4_K_M.gguf
 RUN mkdir -p /models && \
     curl -fSL -o /models/${MODEL_FILE} \
     "https://huggingface.co/${MODEL_REPO}/resolve/main/${MODEL_FILE}"

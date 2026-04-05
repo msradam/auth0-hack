@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL_PATH="${MODEL_PATH:-/models/granite-4.0-tiny-preview-Q4_K_M.gguf}"
+MODEL_PATH="${MODEL_PATH:-/models/granite-4.0-micro-Q4_K_M.gguf}"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
 CHAINLIT_PORT="${CHAINLIT_PORT:-8000}"
 
