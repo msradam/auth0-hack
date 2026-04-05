@@ -27,7 +27,6 @@ from amanat.agent import (
     set_access_token, REMEDIATION_TOOLS,
 )
 from amanat.auth import Auth0TokenVault
-from amanat.ciba import requires_ciba
 
 
 # Patch Auth0 OAuth provider to request JWT + refresh token for Token Vault
