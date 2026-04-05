@@ -17,14 +17,13 @@ llama-server \
     --host 0.0.0.0 \
     --ctx-size 2048 \
     --n-gpu-layers 0 \
-    --mlock \
-    2>&1 | sed 's/^/[llama] /' &
+    2>&1 &
 
 LLAMA_PID=$!
 
 # Wait for llama-server to be ready
 echo "Waiting for llama-server to be ready..."
-for i in $(seq 1 60); do
+for i in $(seq 1 120); do
     if curl -sf http://localhost:${LLAMA_PORT}/health > /dev/null 2>&1; then
         echo "llama-server is ready."
         break
