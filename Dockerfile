@@ -4,6 +4,9 @@
 FROM python:3.13-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
@@ -13,7 +16,7 @@ WORKDIR /app
 # Copy dependency files first for layer caching
 COPY pyproject.toml uv.lock ./
 
-# Install deps
+# Install deps into project venv
 RUN uv sync --no-install-project --frozen 2>/dev/null || \
     uv sync --no-install-project
 
@@ -25,5 +28,5 @@ RUN uv sync --frozen 2>/dev/null || uv sync
 
 EXPOSE 8000
 
-# Demo mode: no llama-server, DEMO_TOOLS=true means synthetic data
-CMD ["uv", "run", "chainlit", "run", "app.py", "--host", "0.0.0.0", "--port", "8000"]
+# Run chainlit directly from the venv
+CMD ["python", "-m", "chainlit", "run", "app.py", "--host", "0.0.0.0", "--port", "8000"]
