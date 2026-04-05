@@ -1,0 +1,49 @@
+## WRA AID DISTRIBUTION - [BIOMETRIC REDACTED] VERIFICATION LOG
+
+Site: [NAME REDACTED] Date: 15 October 2026
+
+Operator: [NAME REDACTED] (WRA-STAFF-042)
+
+Device: BIO-UNIT-07
+
+STRICTLY CONTROLLED - [BIOMETRIC REDACTED] data, special category under GDPR Art. 9
+
+## VERIFICATION LOG
+
+| Time   | Case ID      | Name           | EthnicityFinger [NAME REDACTED] [NAME REDACTED]   | EthnicityFinger [NAME REDACTED] [NAME REDACTED]   |      |                 |
+|--------|--------------|----------------|---------------------------------------|---------------------------------------|------|-----------------|
+| 09:02  | [CASE# REDACTED] | [NAME REDACTED] | [ETHNIC/RELIGIOUS REDACTED]                             | R. Index L                            | PASS | Food parcel 30d |
+| 09:11  | [CASE# REDACTED] | [NAME REDACTED] | [ETHNIC/RELIGIOUS REDACTED]                                 | R. Index                              | PASS | Food parcel 30d |
+| 09:19  | [CASE# REDACTED] | [NAME REDACTED]   | [ETHNIC/RELIGIOUS REDACTED]                                | R. Index L                            | PASS | Food parcel 30d |
+| 09:28  | [CASE# REDACTED] | [NAME REDACTED]   | [ETHNIC/RELIGIOUS REDACTED]                                | R.Mid R                               | PASS | Food parcel 30d |
+| 09:35  | [CASE# REDACTED] | [NAME REDACTED]   | [ETHNIC/RELIGIOUS REDACTED]                                | R. Index L                            | FAIL | Retry required  |
+| 09:44  | [CASE# REDACTED] | [NAME REDACTED]   | [ETHNIC/RELIGIOUS REDACTED]                                | R.Mid                                 | PASS | Food parcel 30d |
+| 09:52  | [CASE# REDACTED] | [NAME REDACTED]  | zen ji                                | R. Index L                            | PASS | NEI kit         |
+| 10:03  | [CASE# REDACTED] | [NAME REDACTED]    | [ETHNIC/RELIGIOUS REDACTED]                                | R. Index R                            | PASS | Food parcel 30d |
+| 10:11  | [CASE# REDACTED] | [NAME REDACTED]    | [ETHNIC/RELIGIOUS REDACTED]                                | R. Index L                            | PASS | Food parcel 30d |
+| 10:19  | [CASE# REDACTED] | [NAME REDACTED]   | [ETHNIC/RELIGIOUS REDACTED]                                 | R.Mid L                               | PASS | Hygiene kit     |
+| 10:27  | WAO-26C00902 | [NAME REDACTED]    | [ETHNIC/RELIGIOUS REDACTED]                                 | R. Index I                            | PASS | Food parcel 30d |
+| 10:35  | [CASE# REDACTED] | [NAME REDACTED]    | [ETHNIC/RELIGIOUS REDACTED]                                | R. Index L                            | PASS | Food parcel 30d |
+
+## SUMMARY
+
+| Metric                        |   Value |
+|-------------------------------|---------|
+| Total verifications attempted |      13 |
+| Successful matches (PASS)     |      12 |
+| Failed matches (FAIL - retry) |       1 |
+| Beneficiaries served          |      12 |
+| [BIOMETRIC REDACTED] scan used         |      13 |
+| [BIOMETRIC REDACTED] used                |      13 |
+| [BIOMETRIC REDACTED] used       |         |
+| Enrolment IDs referenced      |         |
+
+BIO-2026-0412 to B10-2026-0423
+
+operator signature:
+
+Contact for queries: [EMAIL REDACTED]
+
+Supervisor: [NAME REDACTED]
+
+Tel: [PHONE REDACTED]

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html><head><style>
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=JetBrains+Mono:wght@400;500&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 900px; height: 600px;
+  background: #0f1729;
+  display: flex; flex-direction: column;
+  font-family: "Lato", sans-serif; overflow: hidden; position: relative;
+  padding: 40px 50px;
+}
+h1 { font-size: 32px; font-weight: 900; color: #14A89B; margin-bottom: 28px; }
+.arch {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px; color: #8899aa; line-height: 1.55;
+  white-space: pre;
+}
+.arch .highlight { color: #14A89B; font-weight: 700; }
+.arch .dim { color: #4a5a6a; }
+.arch .white { color: #d0d8e0; }
+.footer {
+  position: absolute; bottom: 24px; left: 50px; right: 50px;
+  display: flex; justify-content: space-between;
+  font-size: 13px; color: #4a5a6a;
+}
+.footer .tech { color: #14A89B; font-weight: 700; }
+</style></head><body>
+<h1>Architecture</h1>
+<div class="arch"><span class="dim">                       </span><span class="highlight">Auth0</span>
+<span class="dim">                    ┌────────────────────────┐</span>
+<span class="dim">                    │</span> <span class="white">Universal Login</span><span class="dim">          │</span>
+<span class="dim">          ┌────────►│</span> <span class="white">Token Vault</span><span class="dim">              │</span>
+<span class="dim">          │         └──────────┬─────────────┘</span>
+<span class="dim">          │                    │</span> <span class="highlight">federated tokens</span>
+<span class="dim">┌─────────┴───┐   ┌───────────▼─────────────┐   ┌────────────────┐</span>
+<span class="dim">│</span> <span class="white">Chainlit</span><span class="dim">    │◄─►│</span>       <span class="highlight">Amanat</span><span class="dim">             │◄─►│</span> <span class="white">IBM Granite 4</span><span class="dim">  │</span>
+<span class="dim">│</span> <span class="white">Web UI</span><span class="dim">      │   │</span>                         <span class="dim">│   │</span> <span class="white">Micro (local)</span><span class="dim">  │</span>
+<span class="dim">│</span>             <span class="dim">│   │</span> <span class="white">Strands Agent</span><span class="dim">  │   │</span> <span class="white">llama-server</span><span class="dim">   │</span>
+<span class="dim">│  • OAuth</span>    <span class="dim">│   │  ┌─</span> <span class="highlight">Regex PII</span><span class="dim">           │   └────────────────┘</span>
+<span class="dim">│  • Steps</span>    <span class="dim">│   │  ├─</span> <span class="highlight">LLM PII</span><span class="dim">             │</span>
+<span class="dim">│  • Charts</span>   <span class="dim">│   │  ├─</span> <span class="highlight">Policy RAG</span> <span class="dim">(BM25)   │   ┌────────────────┐</span>
+<span class="dim">│  • Confirm</span>  <span class="dim">│   │  └─</span> <span class="highlight">Docling OCR</span><span class="dim">         │◄─►│</span> <span class="white">IBM Docling</span><span class="dim">    │</span>
+<span class="dim">└─────────────┘   └───────────┬─────────────┘   │</span> <span class="white">granite-258M</span><span class="dim">  │</span>
+<span class="dim">                              │                 └────────────────┘</span>
+<span class="dim">                       ┌──────┼──────┐</span>
+<span class="dim">                       ▼      ▼      ▼</span>
+<span class="dim">                   </span><span class="white">OneDrive Outlook Slack</span></div>
+<div class="footer">
+  <span>amanat</span>
+  <span><span class="tech">Auth0</span> + <span class="tech">Granite 4</span> + <span class="tech">Strands</span> + <span class="tech">Docling</span></span>
+</div>
+</body></html>
