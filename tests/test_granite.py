@@ -42,7 +42,7 @@ async def main():
          "Scan my OneDrive files for data protection issues."),
 
         ("Redact file for safe sharing",
-         "Redact the Upheaval displaced registry (doc-001) so I can share it with the Hateno Development Fund."),
+         "Redact the Cataclysm displaced registry (doc-001) so I can share it with the Ambara Development Fund."),
 
         ("Retention enforcement",
          "Check which files have exceeded their data retention period."),
@@ -58,7 +58,7 @@ async def main():
          "Check the consent status for doc-001 and doc-005."),
 
         ("Multi-step: safe sharing workflow",
-         "I need to share the Upheaval displaced registry (doc-001) with the Hateno Development Fund. "
+         "I need to share the Cataclysm displaced registry (doc-001) with the Ambara Development Fund. "
          "Make sure it is safe to share first."),
     ]
 

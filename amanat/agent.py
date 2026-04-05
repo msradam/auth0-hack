@@ -4,11 +4,6 @@ Amanat Agent — Strands Agents SDK with Granite 4 Micro.
 Uses Strands for the agent loop with native tool call hooks:
 - BeforeToolCallEvent: confirmation dialog for destructive actions, show Chainlit steps
 - AfterToolCallEvent: capture results for charts, close Chainlit steps
-
-Strands was chosen over BeeAI because it exposes per-tool-call lifecycle
-hooks that enable confirmation dialog interception and Chainlit UI
-integration (cl.Step per tool call). BeeAI's RequirementAgent runs tools
-internally with no public interception point.
 """
 
 import os
