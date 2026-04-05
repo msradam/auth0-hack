@@ -1,18 +1,14 @@
-# Amanat - Demo mode deployment (no llama-server needed)
+# Amanat - Demo mode deployment (no llama-server, no docling/torch)
 FROM python:3.13-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PATH="/app/.venv/bin:$PATH"
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
-COPY pyproject.toml uv.lock ./
 
-RUN uv sync --no-install-project --no-dev --frozen 2>/dev/null || \
-    uv sync --no-install-project --no-dev
+# Install only lightweight deps (no docling/torch)
+COPY requirements-railway.txt ./
+RUN pip install --no-cache-dir -r requirements-railway.txt
 
 COPY . .
-RUN uv sync --no-dev --frozen 2>/dev/null || uv sync --no-dev
 
 EXPOSE 8000
