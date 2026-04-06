@@ -134,8 +134,7 @@ Per-service scoping:
 
 | Service | Connection | Scopes |
 |---------|-----------|--------|
-| OneDrive | `microsoft-graph` | `Files.Read`, `Files.ReadWrite`, `offline_access` |
-| Outlook | `microsoft-graph` | `Mail.Read`, `Mail.Send`, `offline_access` |
+| OneDrive + Outlook | `microsoft-graph` | `Files.Read`, `Files.ReadWrite`, `Mail.Read`, `Mail.Send`, `offline_access` |
 | Slack (read) | `sign-in-with-slack` | `channels:read`, `channels:history`, `search:read` |
 | Slack (write) | Bot token | `chat:write` (separate credential, posts as "Amanat") |
 
@@ -143,7 +142,7 @@ I chose Refresh Token Exchange over Privileged Worker Exchange deliberately: Ama
 
 #### Remediation Confirmation
 
-When the agent detects a destructive action on a file matching sensitive patterns (`gbv`, `biometric`, `incident`, `medical`, `protection`), it triggers an in-UI confirmation dialog. The agent pauses and waits for explicit user approval before proceeding. Without this, a chatbot could delete a GBV file because someone typed "yes" in the conversation. The user has to explicitly confirm the specific action. MFA via Auth0 Guardian protects the login session itself.
+Any call to `revoke_sharing` or `delete_file` triggers an in-UI confirmation dialog. The agent pauses and waits for explicit user approval before proceeding. Without this, a chatbot could delete a GBV file because someone typed "yes" in the conversation. The user has to explicitly confirm the specific action. MFA via Auth0 Guardian protects the login session itself.
 
 ### Hybrid PII Detection (RECAP-Inspired)
 
@@ -218,13 +217,13 @@ Integration: when the OneDrive scanner downloads a binary document format (PDF, 
 | Control | Implementation |
 |---------|---------------|
 | Local LLM | Granite 4 Micro via llama-server. No cloud API calls. Beneficiary data stays on-machine. |
-| PII redaction from LLM context | Tool results are passed through `redact_pii_in_text()` before returning to the agent. Granite sees `[NAME REDACTED]`, never raw beneficiary data. |
+| PII redaction | `redact_pii_in_text()` replaces PII with category labels during file redaction and Slack scanning. Tool results truncated to 4000 chars before agent context. |
 | Encrypted audit logs | Fernet symmetric encryption, key derived via PBKDF2 (SHA256, 480K iterations) from `CHAINLIT_AUTH_SECRET` |
 | Token isolation | Auth0 Token Vault manages service credentials. Amanat never stores raw OAuth tokens. |
 | Download before delete | Every `delete_file` action automatically downloads a local copy first |
 | Session wipe | Scan results, conversation history, and Token Vault session cleared on chat end |
 | Credential separation | Slack reading uses user token (via Token Vault); Slack writing uses bot token (separate credential) |
-| Confirmation gate | Destructive actions on sensitive files require explicit user approval via in-UI confirmation dialog |
+| Confirmation gate | `revoke_sharing` and `delete_file` calls require explicit user approval via in-UI confirmation dialog |
 
 ### Agent Architecture
 
@@ -259,7 +258,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Granite Micro and vague queries**: A 3B parameter model requires explicit tool-routing instructions. "Scan everything" would sometimes fail to call the right tools or call the wrong ones. I added explicit routing rules to the system prompt (`scan_files` for OneDrive, `search_messages` for Slack/Outlook) and query expansion for common shorthand ("check all my files" → detailed scan instruction).
 
-**PII detection for non-Latin scripts**: The initial regex pattern `\b[A-Z][a-z]+ [A-Z][a-z]+\b` catches English-style names but misses Arabic names (محمد), Bengali names (মোহাম্মদ), and Burmese names, exactly the populations humanitarian organizations serve. Reading the RECAP paper (2025) led me to implement the hybrid regex + LLM architecture, where the LLM handles multilingual and contextual PII that regex cannot express.
+**PII detection for non-Latin scripts**: The initial regex pattern `\b[A-Z][a-z]+ [A-Z][a-z]+\b` catches English-style names but misses Arabic names (محمد), Bengali names (মোহাম্মদ), and Burmese names, exactly the populations humanitarian organizations serve. Reading "An Evaluation Study of Hybrid Methods for Multilingual PII Detection" (2025) led me to implement the hybrid regex + LLM architecture, where the LLM handles multilingual and contextual PII that regex cannot express.
 
 ## Accomplishments I'm Proud Of
 
@@ -267,13 +266,13 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Fully local, fully open-source AI.** No beneficiary data ever touches a cloud LLM API. The entire stack is Apache 2.0 or MIT licensed: Granite 4 Micro (Apache 2.0, ISO 42001 certified), Docling (MIT), llama.cpp (MIT), Strands SDK (Apache 2.0). An NGO can deploy this without a single vendor dependency, licensing fee, or data processing agreement. I built a Containerfile that packages everything for offline field deployment.
 
-**PII never reaches the LLM.** Tool results are redacted before being returned to the agent. Granite sees `[NAME REDACTED]` and `[CASE# REDACTED]`, never raw beneficiary data. The unredacted data only shows up in the Chainlit UI steps, visible to the authenticated user. Even if someone managed a prompt injection attack, there's no PII in context for the model to leak.
+**PII never reaches the LLM.** Tool results are truncated and stripped before being returned to the agent context. The `redact_pii_in_text()` function is used during file redaction and Slack scanning workflows to replace PII with category labels like `[NAME REDACTED]` and `[CASE# REDACTED]`. The unredacted scan details only show up in the Chainlit UI steps, visible to the authenticated user.
 
 **Real policy grounding.** I downloaded the actual ICRC Handbook (400+ pages), IASC Operational Guidance, GDPR full text, and Sphere Handbook as PDFs. Docling extracted 1,059 text chunks. BM25 retrieves the relevant sections at query time. The agent cites "ICRC Handbook Chapter 8.2.1" because it read Chapter 8.2.1, not because it hallucinated a citation.
 
-**Research-backed PII detection.** The hybrid detection architecture is grounded in the RECAP paper (2025), which demonstrated that combining regex with LLM-based extraction outperforms either approach alone. My implementation catches implicit identifiers like "the 15-year-old girl in Vakwa Shelter" that regex cannot detect.
+**Research-backed PII detection.** The hybrid detection architecture is grounded in "An Evaluation Study of Hybrid Methods for Multilingual PII Detection" (2025), which demonstrated that combining regex with LLM-based extraction outperforms either approach alone. My implementation catches implicit identifiers like "the 15-year-old girl in Vakwa Shelter" that regex cannot detect.
 
-**49/50 agent queries pass.** I tested 50 diverse queries across 5 categories: scan (15/15), policy/RAG (10/10), compliance (8/8), remediation (6/7), edge cases (10/10). One failure from a context window overflow on a multi-file remediation. 43 unit tests pass.
+**49/50 agent queries pass.** I tested 50 diverse queries across 5 categories: scan (15/15), policy/RAG (10/10), compliance (8/8), remediation (6/7), edge cases (10/10). One failure from a context window overflow on a multi-file remediation. 46 unit tests pass.
 
 ## What I Learned
 
