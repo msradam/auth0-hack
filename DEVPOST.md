@@ -26,6 +26,10 @@ The 3-minute demo video shows Amanat running locally against my personal Microso
 
 ![Agent retrieves ICRC rules on special-category data retention, determines the biometric enrollment log violates the 6-month retention window, recommends deletion.](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/08_policy_rag_icrc.png)
 
+**CIBA step-up auth: Guardian push notification for destructive actions**
+
+![Agent sends Guardian push via CIBA before revoking sharing. Shows auth_req_id, binding message, and CIBA token on approval.](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/ciba1.png)
+
 ## Published App
 
 The published app at https://amanat-production.up.railway.app runs in demo mode. Auth0 login works, but tools return synthetic data rather than calling live APIs. This is because the full experience requires the user's own OneDrive, Slack, and Outlook accounts connected via Token Vault, which cannot be shared publicly. The demo mode shows the full agent workflow (scanning, PII detection, policy citations, remediation confirmation) using the same Waqwaq scenario data from the video. To run Amanat against live services, clone the repo and follow the setup instructions in the README.
