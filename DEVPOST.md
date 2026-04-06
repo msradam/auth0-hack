@@ -32,7 +32,16 @@ The 3-minute demo video shows Amanat running locally against my personal Microso
 
 ## Published App
 
-The published app at https://amanat-production.up.railway.app runs in demo mode. Auth0 login works, but tools return synthetic data rather than calling live APIs. This is because the full experience requires the user's own OneDrive, Slack, and Outlook accounts connected via Token Vault, which cannot be shared publicly. The demo mode shows the full agent workflow (scanning, PII detection, policy citations, remediation confirmation) using the same Waqwaq scenario data from the video. To run Amanat against live services, clone the repo and follow the setup instructions in the README.
+The published app at https://msradam-amanat.hf.space runs Granite 4 on IBM watsonx.ai with full tool calling. Auth0 login works. Tools return synthetic demo data (the full experience requires the user's own OneDrive, Slack, and Outlook connected via Token Vault). To run against live services, clone the repo and follow the setup instructions in the README.
+
+## Auth0 Features Used
+
+| Feature | How Amanat Uses It |
+|---------|-------------------|
+| **Universal Login** | Single sign-on with Guardian MFA push notifications |
+| **Token Vault (Connected Accounts)** | Federated token exchange for OneDrive, Slack, Outlook. Per-service scoping. MRRT across My Account API and all providers |
+| **CIBA (Backchannel Authentication)** | Guardian push to user's phone before revoking sharing or deleting files. `POST /bc-authorize` with binding message. Agent polls until approved |
+| **Guardian MFA** | Push notifications for both login MFA and CIBA step-up auth on destructive actions |
 
 ---
 
@@ -403,6 +412,8 @@ The pattern generalizes beyond humanitarian data. Any AI agent that touches mult
 ## Built With
 
 - auth0-token-vault
+- auth0-ciba
+- auth0-guardian
 - strands-agents-sdk
 - chainlit
 - docling
