@@ -14,11 +14,17 @@ The 3-minute demo video shows Amanat running locally against my personal Microso
 
 ## Screenshots
 
-![Revoke sharing on GBV files — confirmation dialog blocks the agent until user approves](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/09_revoke_sharing_gbv.png)
+**Slack scan: PII detected across public channels, alerts posted automatically**
 
-![Outlook scan finds PII violations, sends alert emails via Token Vault](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/02_outlook_scan_email_alert.png)
+![Slack scan finds beneficiary names, case numbers, GPS coordinates, and medical data in three public channels. Alerts posted to each channel. File attachment scanned and flagged.](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/03_slack_scan_summary.png)
 
-![Policy RAG citing ICRC Handbook chapters from source PDFs](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/08_policy_rag_icrc.png)
+**Redaction: 47 PII instances removed, clean copy uploaded to OneDrive**
+
+![Agent redacts all PII from the displaced persons registry and uploads REDACTED_Cataclysm_Displaced_Registry_2026.csv to the same OneDrive folder. Original file untouched. Slack notification sent.](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/05_redaction_result.png)
+
+**Policy RAG: ICRC Handbook cited on biometric data retention**
+
+![Agent retrieves ICRC rules on special-category data retention, determines the biometric enrollment log violates the 6-month retention window, recommends deletion.](https://raw.githubusercontent.com/msradam/amanat/main/assets/screenshots/08_policy_rag_icrc.png)
 
 ## Published App
 
