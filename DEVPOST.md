@@ -2,7 +2,7 @@
 
 Author: Adam Munawar Rahman, April 2026
 
-Amanat connects to your OneDrive, Slack, and Outlook through Auth0 Token Vault, scans for sensitive beneficiary data that's been overshared or exposed, and helps fix it. Two things make this possible: Token Vault handles multi-service credential management so the agent can act across services without storing raw tokens, and IBM Granite 4 Micro runs the analysis locally so beneficiary data never leaves the device. For humanitarian organizations handling refugee case files and GBV reports, both properties are requirements, not features.
+Amanat connects to your OneDrive, Slack, and Outlook through Auth0 Token Vault, scans for sensitive beneficiary data that's been overshared or exposed, and helps fix it. Token Vault handles the multi-service credential management -- the agent acts across OneDrive, Slack, and Outlook without storing raw tokens. IBM Granite 4 Micro runs the analysis locally, so beneficiary data never leaves the device. For organizations handling refugee case files and GBV reports, you need both of those things or the tool is unusable.
 
 *Amanat* (Arabic: trust, stewardship), the concept that what is entrusted to you must be protected and returned faithfully.
 
@@ -46,7 +46,7 @@ Humanitarian organizations handle refugee case files, GBV incident reports, biom
 
 > "The Data of the Most Vulnerable People is the Least Protected" — Human Rights Watch, 2023
 
-The ICRC published a 400-page Handbook on Data Protection in Humanitarian Action (2nd ed., 2020). The IASC published Operational Guidance on Data Responsibility (2023). The Sphere Standards include Protection Principles for sensitive information handling. The policy documents exist. What doesn't exist is software that enforces them.
+The ICRC published a 400-page Handbook on Data Protection in Humanitarian Action (2nd ed., 2020). The IASC published Operational Guidance on Data Responsibility (2023). The Sphere Standards include Protection Principles for sensitive information handling. The policy documents exist. Nobody has built software that enforces them.
 
 The tools humanitarian organizations actually use -- KoBoToolbox for data collection, DHIS2 for health data, Microsoft 365 for everything else -- have baseline security (encryption in transit, optional encryption at rest, basic RBAC) but no automated data classification, no sensitivity detection, no cross-platform governance, no policy enforcement. A CyberPeace Institute study found that 41% of NGOs had been attacked in the past three years, only 4% had actionable cybersecurity policies, and 56% had no cybersecurity budget at all (CyberPeace, 2024). A Dalberg/ICRC joint study found fewer than half of humanitarian organizations had data protection policies meeting international standards (ICRC Handbook, 2020).
 
@@ -58,7 +58,7 @@ You log in through Auth0, connect your OneDrive, Slack, and Outlook via Token Va
 
 ### Why These Three Services
 
-UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Outlook the default file storage and email for the world's largest refugee agency. WFP, UNICEF, and dozens of implementing partners followed. Slack (and increasingly Teams) became the coordination layer -- the NetHope consortium, which provides IT infrastructure for 60+ major international NGOs, has documented the shift to cloud messaging platforms across the sector. Sensitive data flows across all three services daily, and no single tool watches all three. Amanat connects to them via Token Vault because that's where humanitarian data actually lives.
+UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Outlook the default file storage and email for the world's largest refugee agency. WFP, UNICEF, and dozens of implementing partners followed. Slack (and increasingly Teams) became the coordination layer -- the NetHope consortium, which provides IT infrastructure for 60+ major international NGOs, has documented the shift to cloud messaging platforms across the sector. Sensitive data flows across all three every day, and nothing watches the gap between them. Amanat connects to all three via Token Vault because that's where the data actually is.
 
 ### Capabilities
 
@@ -117,7 +117,7 @@ Demo files across OneDrive (`/WRA Operations/`):
 
 #### Token Vault (Connected Accounts)
 
-This is the part I'm most pleased with. The user authenticates once via Auth0 Universal Login, then connects each service separately through Connected Accounts. Each connection is its own OAuth consent screen -- the user sees exactly which permissions they're granting, and they can disconnect any service independently. Amanat exchanges Auth0 refresh tokens for service-specific access tokens via federated token exchange:
+The user authenticates once via Auth0 Universal Login, then connects each service separately through Connected Accounts. Each connection is its own OAuth consent screen -- the user sees exactly which permissions they're granting, and can disconnect any service without affecting the others. Amanat exchanges Auth0 refresh tokens for service-specific access tokens via federated token exchange:
 
 ```
 POST /oauth/token
@@ -143,7 +143,7 @@ I chose Refresh Token Exchange over Privileged Worker Exchange deliberately: Ama
 
 #### Remediation Confirmation
 
-When the agent detects a destructive action on a file matching sensitive patterns (`gbv`, `biometric`, `incident`, `medical`, `protection`), it triggers an in-UI confirmation dialog. The agent pauses and waits for explicit user approval before proceeding. This ensures a chatbot doesn't delete a GBV file just because someone typed "yes" in the conversation -- the user must explicitly confirm the specific destructive action. MFA via Auth0 Guardian protects the login session itself.
+When the agent detects a destructive action on a file matching sensitive patterns (`gbv`, `biometric`, `incident`, `medical`, `protection`), it triggers an in-UI confirmation dialog. The agent pauses and waits for explicit user approval before proceeding. Without this, a chatbot could delete a GBV file because someone typed "yes" in the conversation. The user has to explicitly confirm the specific action. MFA via Auth0 Guardian protects the login session itself.
 
 ### Hybrid PII Detection (RECAP-Inspired)
 
@@ -247,7 +247,7 @@ User Query → Chainlit Web UI → Strands Agent (Granite 4 Micro, local) → To
 
 ### UI Design
 
-The Chainlit chat interface was chosen because data governance is a conversation, not a dashboard. A protection officer doesn't want to click through 15 tabs -- they want to say "scan the Protection folder" and see results inline. Each tool call shows as a collapsible Step in the chat, so the user can see exactly what the agent did (which API it called, what it found) without the results cluttering the main conversation. Scan results render as interactive Plotly charts -- risk distribution by file, PII types found, sharing status breakdown. The confirmation dialog for destructive actions (revoke sharing, delete files) is a prominent Approve/Deny button pair that blocks the agent until the user responds. No "are you sure?" buried in a chat message -- a distinct UI element that demands a deliberate click.
+I went with a chat interface because data governance works better as a conversation than a dashboard. A protection officer doesn't want to click through 15 tabs -- they want to say "scan the Protection folder" and see what comes back. Each tool call shows as a collapsible Step in the chat, so the user can see exactly what the agent did (which API it called, what it found) without the results cluttering the main conversation. Scan results render as interactive Plotly charts -- risk distribution by file, PII types found, sharing status breakdown. The confirmation dialog for destructive actions (revoke sharing, delete files) is a prominent Approve/Deny button pair that blocks the agent until the user responds. Not an "are you sure?" buried in a chat message -- an actual button that blocks the agent until you click it.
 
 ## Challenges I Ran Into
 
@@ -277,7 +277,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 ## What I Learned
 
-**Auth0 Token Vault is the right abstraction for multi-service AI agents.** The federated token exchange pattern (one authentication event, per-service scoped tokens, automatic refresh, user-controlled consent) maps directly to what an agentic system requires. Users connect and disconnect services individually. The agent never stores raw credentials. Token expiry is handled transparently. All AI agents should handle multi-service access this way.
+**Token Vault is the right abstraction for multi-service agents.** One authentication event, per-service scoped tokens, automatic refresh, user-controlled consent. Users connect and disconnect services individually. The agent never stores raw credentials. Token expiry handled transparently. Every AI agent that touches multiple services on behalf of a user should work this way.
 
 **Small models are sufficient when tools are deterministic.** Granite 4 Micro (3B params) reliably handles tool routing, policy analysis, and report generation. The thing I kept running into: if you ask the LLM to detect PII directly, it hallucinates. Deterministic regex for structural patterns, LLM only for contextual extraction where it actually adds value. Let the LLM reason about findings, let the scanner produce them.
 
@@ -285,7 +285,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Hybrid approaches beat pure approaches.** PII detection (regex + LLM beats either alone) and policy retrieval (BM25 + document preprocessing beats keyword search) both pointed the same direction. Combining specialized approaches kept outperforming any single method at every layer.
 
-**Agent authorization needs a consent model, not just an auth model.** The hardest design question wasn't "how do I get a token" -- Token Vault handles that. It was "when should the agent be allowed to act?" Scanning is read-only, fine. But revoking a sharing link on a GBV file is a destructive action with real consequences. The pattern I landed on: the agent can scan and report freely, but any destructive action requires an explicit in-UI confirmation. The user stays in control of what the agent does with the access they granted. This feels like a pattern every agent framework should adopt.
+**Agent authorization needs a consent model, not just an auth model.** The hard question wasn't "how do I get a token" -- it was "when should the agent be allowed to act?" Scanning is read-only, fine. Revoking a sharing link on a GBV file has real consequences. I landed on: the agent scans and reports freely, but destructive actions require an explicit in-UI confirmation. The user stays in control of what the agent does with the access they granted.
 
 ## Why This Matters Beyond the Demo
 
@@ -293,7 +293,7 @@ Enterprise DLP tools (Varonis, Microsoft Purview, Symantec DLP) cost $5,000 to $
 
 UNHCR runs Microsoft 365 across field locations. WFP's SCOPE system holds data on 90 million beneficiaries. These organizations use OneDrive, Outlook, and Slack daily. But none of these platforms have built-in humanitarian data governance -- no automated sensitivity detection, no policy enforcement against ICRC rules, no cross-service visibility into what's been shared and with whom. Amanat sits on top of these existing services via Token Vault and adds the governance layer that's missing.
 
-Most AI agent projects connect to cloud services to send emails or schedule meetings. Amanat connects to cloud services to find data that could get someone killed, and then fixes it. The Token Vault integration isn't a demo convenience -- it's the mechanism that lets the agent act on real files across real services with real consequences, while keeping credential management out of the agent's hands entirely.
+Most AI agent projects connect to cloud services to send emails or schedule meetings. Amanat connects to cloud services to find data that could get someone killed, and fixes it. Token Vault isn't a demo convenience here -- it's what lets the agent act on real files across real services with real consequences, without the agent ever holding raw credentials.
 
 ## What's Next for Amanat
 
@@ -318,7 +318,7 @@ Most AI agent projects connect to cloud services to send emails or schedule meet
 
 I joined this hackathon late and built Amanat to demonstrate what Token Vault-powered data governance looks like end-to-end. The core loop works: authenticate via Auth0, connect services via Token Vault, scan across OneDrive/Slack/Outlook, detect PII, cite policy, and remediate with confirmation. Granite 4 Micro was chosen specifically because it scales to the infrastructure humanitarian organizations actually have -- a laptop in a field office, no GPU, no cloud dependency, no data leaving the device. That's the deployment model.
 
-The Auth0 integration is functional but not yet production-hardened. Token exchange and Connected Accounts flows work, but the token handoff between the Chainlit session and the Connected Accounts routes uses a temporary file rather than a proper session store. Connected service discovery doesn't query the My Account API for what's actually linked -- it assumes. Disconnecting a service removes the local token but doesn't call Auth0's disconnect endpoint. These are the actual rough edges, and they're the kind of thing you'd fix in a production build with proper session management, not fundamental architectural issues.
+The Auth0 integration is functional but not yet production-hardened. Token exchange and Connected Accounts flows work, but the token handoff between the Chainlit session and the Connected Accounts routes uses a temporary file rather than a proper session store. Connected service discovery doesn't query the My Account API for what's actually linked -- it assumes. Disconnecting a service removes the local token but doesn't call Auth0's disconnect endpoint. These are the actual rough edges -- session management plumbing, not architectural problems.
 
 What a production version would add beyond that: persistent storage, role-based access via Auth0 RBAC, real-time Slack monitoring via Events API, and field testing with actual protection officers.
 
