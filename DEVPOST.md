@@ -109,9 +109,7 @@ UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Ou
 
 ### Demo Scenario
 
-The demo uses a fictional humanitarian scenario: Post-Cataclysm Waqwaq. The Waqwaq Relief Authority (WRA) is responding to a displacement crisis on a fictional Indian Ocean archipelago inspired by Waqwaq, a legendary island from medieval Arabic geographical literature referenced by al-Idrisi (1154), Buzurg ibn Shahriyar (953), and Ibn al-Wardi (1348).
-
-The approach follows established practice in humanitarian training: DHIS2 uses fictional countries for training data, Sphere exercises use invented scenarios, and the CDC used zombie apocalypse scenarios for emergency preparedness education. The fictional setting demonstrates real data governance patterns without using real-world sensitive data.
+The demo uses a fictional humanitarian scenario: Post-Cataclysm Waqwaq. The Waqwaq Relief Authority (WRA) responds to a displacement crisis on a fictional archipelago. Fictional setting, real data governance patterns, no real-world sensitive data.
 
 Demo files across OneDrive (`/WRA Operations/`):
 
@@ -191,18 +189,9 @@ Policy grounding uses real documents, not paraphrases:
 
 2. **Preprocessing**: IBM Docling parses PDFs into structured markdown, splits by section headings, filters for data-protection-relevant content → 1,059 chunks, 1.1M chars
 
-3. **Retrieval**: BM25 (Best Match 25) ranking over chunk text. BM25 handles term frequency, inverse document frequency, and document length normalization, outperforming keyword matching for policy documents where the same concept appears in different terminology
+3. **Retrieval**: BM25 ranking over chunk text.
 
-4. **Injection**: Top 5 chunks formatted in Granite 4's native `<documents>` RAG format:
-
-```
-<documents>
-{"doc_id": 42, "title": "8.2.1 LEGAL BASES FOR PERSONAL DATA PROCESSING",
- "source": "ICRC Handbook", "text": "Humanitarian Organizations may process..."}
-</documents>
-```
-
-Example: the query "Can we share biometric data with host governments?" retrieves ICRC Handbook Chapter 4.2 (International Data Sharing), Chapter 8.2.1 (Legal Bases for Biometric Processing), and Chapter 8.2.4 (Data Minimization), the same sections a data protection officer would consult.
+4. **Injection**: Top 5 chunks formatted in Granite 4's native `<documents>` RAG format. The query "Can we share biometric data with host governments?" retrieves ICRC Handbook Chapter 4.2, 8.2.1, and 8.2.4, the same sections a data protection officer would consult.
 
 ### IBM Granite 4 Micro
 
@@ -210,10 +199,10 @@ Granite 4.0 Micro is a 3B-parameter dense transformer model released under Apach
 
 - **Apache 2.0 license**: no licensing barriers for humanitarian organizations, no usage restrictions, no royalties. Any NGO can deploy it freely.
 - **Small footprint**: 3B parameters run in ~4GB RAM via llama.cpp quantization. Deployable on a laptop in a field office. No GPU, no cloud, no internet required.
-- **Native function calling** with structured JSON output. The agent loop is driven by Strands Agents SDK, which provides native tool-call lifecycle hooks (BeforeToolCallEvent, AfterToolCallEvent) for Chainlit UI integration and confirmation dialog interception.
-- **Multilingual**: English, Arabic, French, Spanish, Japanese, Korean, Chinese, and 5 other languages . Critical for humanitarian contexts where beneficiaries speak the languages enterprise LLMs handle worst.
-- **128K validated context** with 512K training length, sufficient for large policy documents and scan results.
-- **Published training data sources**: IBM discloses the 14 data sources used for pre-training. All model checkpoints are cryptographically signed for supply-chain verification.
+- **Native function calling** with structured JSON output via Strands Agents SDK.
+- **Multilingual**: English, Arabic, French, Spanish, Japanese, Korean, Chinese, and 5 other languages.
+- **128K context window**, sufficient for large policy documents and scan results.
+- **Published training data sources** and cryptographically signed model checkpoints.
 
 This matters because ICRC data protection rules (Articles 23-24) impose strict conditions on transferring personal data to third-party processors. Any recipient must contractually prove adequacy and purpose limitation. Sending beneficiary data to a commercial LLM API (OpenAI, Anthropic, Google) creates a third-party processing relationship that is difficult to justify under ICRC rules. A local model eliminates the question entirely: the data never leaves the device.
 
@@ -221,9 +210,7 @@ This matters because ICRC data protection rules (Articles 23-24) impose strict c
 
 Docling (MIT license, hosted by LF AI & Data Foundation) and its companion model granite-docling-258M (Apache 2.0) handle document parsing. Field documents are often scanned: printed intake forms, hand-filled registration sheets, faxed protection assessments. These arrive as image-only PDFs with no embedded text layer.
 
-Docling's standard pipeline handles embedded-text documents (CSV, DOCX, XLSX). For image-only PDFs, the granite-docling-258M VLM pipeline provides OCR with table structure recognition (0.96 TEDS score). On Apple Silicon, the MLX backend accelerates inference.
-
-Integration: when the OneDrive scanner downloads a binary document format (PDF, DOCX, PPTX, XLSX), it automatically routes through Docling for text extraction before PII detection. The routing is transparent to the user and the agent.
+For image-only PDFs, the granite-docling-258M VLM pipeline provides OCR with table structure recognition. When the OneDrive scanner downloads a PDF/DOCX/XLSX, it routes through Docling for text extraction before PII detection.
 
 ### Security Hardening
 
@@ -259,7 +246,7 @@ User Query → Chainlit Web UI → Strands Agent (Granite 4 Micro, local) → To
 
 ### UI Design
 
-I went with a chat interface because data governance works better as a conversation than a dashboard. A protection officer doesn't want to click through 15 tabs. They want to say "scan the Protection folder" and see what comes back. Each tool call shows as a collapsible Step in the chat, so the user can see exactly what the agent did (which API it called, what it found) without the results cluttering the main conversation. Scan results render as interactive Plotly charts: risk distribution by file, PII types found, sharing status breakdown. Destructive actions (revoke sharing, delete files) trigger a CIBA step-up authentication. The agent sends a Guardian push notification to the user's phone, displays the `auth_req_id` and binding message in the chat, and polls until the user approves or denies on their device. Not an "are you sure?" buried in a chat message. A separate-device confirmation via Auth0's backchannel authentication flow.
+Chat interface over dashboard. A protection officer says "scan the Protection folder" and sees results inline. Each tool call shows as a collapsible Step. Scan results render as Plotly charts. Destructive actions trigger CIBA step-up auth with Guardian push to the user's phone.
 
 ## Challenges I Ran Into
 
@@ -342,9 +329,7 @@ Most AI agent projects connect to cloud services to send emails or schedule meet
 
 I joined this hackathon late and built Amanat to demonstrate what Token Vault-powered data governance looks like end-to-end. The core loop works: authenticate via Auth0, connect services via Token Vault, scan across OneDrive/Slack/Outlook, detect PII, cite policy, and remediate with confirmation. Granite 4 Micro was chosen specifically because it scales to the infrastructure humanitarian organizations actually have. A laptop in a field office, no GPU, no cloud dependency, no data leaving the device. That's the deployment model.
 
-The Auth0 integration is functional but not yet production-hardened. Token exchange and Connected Accounts flows work, but the token handoff between the Chainlit session and the Connected Accounts routes uses a temporary file rather than a proper session store. Connected service discovery doesn't query the My Account API for what's actually linked; it assumes. Disconnecting a service removes the local token but doesn't call Auth0's disconnect endpoint. These are the actual rough edges. Session management plumbing, not architectural problems.
-
-What a production version would add beyond that: persistent storage, role-based access via Auth0 RBAC, real-time Slack monitoring via Events API, and field testing with actual protection officers.
+The Auth0 integration is functional but not yet production-hardened. Token handoff between the Chainlit session and Connected Accounts routes uses a temporary file rather than a proper session store. Session management plumbing, not architectural problems. A production version would add persistent storage, Auth0 RBAC, real-time Slack monitoring, and field testing with protection officers.
 
 ## Tech Stack
 
