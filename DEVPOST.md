@@ -272,7 +272,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Research-backed PII detection.** The hybrid detection architecture is grounded in "An Evaluation Study of Hybrid Methods for Multilingual PII Detection" (2025), which demonstrated that combining regex with LLM-based extraction outperforms either approach alone. My implementation catches implicit identifiers like "the 15-year-old girl in Vakwa Shelter" that regex cannot detect.
 
-**40-query test suite.** I wrote a test harness (`scripts/test_40_queries.py`) that runs 40 queries across 6 categories: OneDrive scan (8), Slack scan (4), Outlook scan (3), policy/RAG (8), compliance (5), remediation (5), and edge cases (7). Each query is classified as PASS, PARTIAL, or FAIL based on whether the agent called the right tool and returned relevant content. Results are logged to JSONL with timing data.
+**40/40 agent queries pass.** A test harness (`scripts/test_40_queries.py`) runs 40 queries across 7 categories: OneDrive scan (8/8), Slack scan (4/4), Outlook scan (3/3), policy/RAG (8/8), compliance (5/5), remediation (5/5), edge cases (7/7). Each query is classified as PASS, PARTIAL, or FAIL based on whether the agent called the right tool and returned relevant content. Full results logged to `test_results.jsonl`.
 
 ## What I Learned
 
