@@ -46,6 +46,10 @@ The tools humanitarian organizations actually use -- KoBoToolbox for data collec
 
 I built Amanat to fill that gap.
 
+### Why OneDrive, Slack, and Outlook
+
+These aren't arbitrary choices. UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Outlook the default file storage and email for the world's largest refugee agency. WFP, UNICEF, and dozens of implementing partners followed. Slack (and increasingly Teams) became the coordination layer -- the NetHope consortium, which provides IT infrastructure for 60+ major international NGOs, has documented the shift to cloud messaging platforms across the sector. The result: sensitive data flows across three services daily, and no single tool watches all three. Amanat connects to all three via Token Vault because that's where humanitarian data actually lives.
+
 ## What It Does
 
 You log in through Auth0, connect your OneDrive, Slack, and Outlook via Token Vault, and tell the agent what to look for. It scans your files, messages, and emails for PII, checks what's publicly shared, cites the relevant ICRC or GDPR section, and can revoke sharing links or redact files on the spot. The entire analysis runs on a local LLM -- beneficiary data never leaves your machine.
@@ -303,6 +307,10 @@ Most AI agent projects connect to cloud services to send emails or schedule meet
 - Differential privacy for donor-facing statistics
 - Hardware security modules for biometric data encryption keys
 - Ruggedized container deployments for conflict zone field offices
+
+## Scope and Limitations
+
+I joined this hackathon late and built Amanat as a proof of concept -- a demonstration that Token Vault can power a genuinely useful data governance agent, not a production-ready deployment. The core loop works end-to-end (authenticate, connect services, scan, detect PII, cite policy, remediate with confirmation), but there are rough edges: the 3B model sometimes needs explicit prompting to call the right tool, the published app runs on CPU so inference is slow, and the demo uses synthetic data rather than a live humanitarian deployment. The architecture, the Token Vault integration, and the security model are the contribution. A production version would need a larger model, persistent storage, role-based access, and field testing with actual protection officers.
 
 ## Tech Stack
 
