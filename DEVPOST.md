@@ -2,7 +2,7 @@
 
 Author: Adam Munawar Rahman, April 2026
 
-Amanat connects to your OneDrive, Slack, and Outlook through Auth0 Token Vault, scans for sensitive beneficiary data that's been overshared or exposed, and helps fix it. Token Vault handles the multi-service credential management -- the agent acts across OneDrive, Slack, and Outlook without storing raw tokens. IBM Granite 4 Micro runs the analysis locally, so beneficiary data never leaves the device. For organizations handling refugee case files and GBV reports, you need both of those things or the tool is unusable.
+Amanat connects to your OneDrive, Slack, and Outlook through Auth0 Token Vault, scans for sensitive beneficiary data that's been overshared or exposed, and helps fix it. Token Vault handles multi-service credential management so the agent acts across all three without storing raw tokens. IBM Granite 4 Micro runs the analysis locally, so beneficiary data never leaves the device. For organizations handling refugee case files and GBV reports, you need both of those things or the tool is unusable.
 
 *Amanat* (Arabic: trust, stewardship), the concept that what is entrusted to you must be protected and returned faithfully.
 
@@ -40,7 +40,7 @@ Nobody hacked UNHCR. The data was shared through internal processes, on shared d
 
 UNHCR's own data protection policy requires telling people, in a language they understand, why their data is being collected and whether it will be transferred. Of 24 refugees HRW interviewed, all but one said they were never informed of potential data sharing with Myanmar. UNHCR never carried out a data impact assessment, breaching its own rules (HRW, 2021).
 
-This keeps happening. In 2016, the UN's Office of Internal Oversight Services found that three of five UNHCR missions they investigated had shared refugees' personal data with host governments without assessing data protection or establishing transfer agreements (OIOS, 2016). In January 2022, attackers exploited an unpatched vulnerability to access personal data of 515,000 people in the ICRC's Restoring Family Links programme -- people separated from families by conflict, migration, and disaster. The attackers were inside for 70 days before anyone noticed. The programme had to be shut down entirely (ICRC, 2022).
+This keeps happening. In 2016, the UN's Office of Internal Oversight Services found that three of five UNHCR missions they investigated had shared refugees' personal data with host governments without assessing data protection or establishing transfer agreements (OIOS, 2016). In January 2022, attackers exploited an unpatched vulnerability to access personal data of 515,000 people in the ICRC's Restoring Family Links programme, which helps people separated from families by conflict, migration, and disaster. The attackers were inside for 70 days before anyone noticed. The programme had to be shut down entirely (ICRC, 2022).
 
 Humanitarian organizations handle refugee case files, GBV incident reports, biometric enrollment logs, medical records of displaced persons. And field teams routinely store this data on cloud services with default sharing settings. A GBV report shared with "anyone with the link." Case numbers posted in public Slack channels. Beneficiary names and HIV status in a donor report email.
 
@@ -48,17 +48,17 @@ Humanitarian organizations handle refugee case files, GBV incident reports, biom
 
 The ICRC published a 400-page Handbook on Data Protection in Humanitarian Action (2nd ed., 2020). The IASC published Operational Guidance on Data Responsibility (2023). The Sphere Standards include Protection Principles for sensitive information handling. The policy documents exist. Nobody has built software that enforces them.
 
-The tools humanitarian organizations actually use -- KoBoToolbox for data collection, DHIS2 for health data, Microsoft 365 for everything else -- have baseline security (encryption in transit, optional encryption at rest, basic RBAC) but no automated data classification, no sensitivity detection, no cross-platform governance, no policy enforcement. A CyberPeace Institute study found that 41% of NGOs had been attacked in the past three years, only 4% had actionable cybersecurity policies, and 56% had no cybersecurity budget at all (CyberPeace, 2024). A Dalberg/ICRC joint study found fewer than half of humanitarian organizations had data protection policies meeting international standards (ICRC Handbook, 2020).
+The tools humanitarian organizations actually use (KoBoToolbox for data collection, DHIS2 for health data, Microsoft 365 for everything else) have baseline security (encryption in transit, optional encryption at rest, basic RBAC) but no automated data classification, no sensitivity detection, no cross-platform governance, no policy enforcement. A CyberPeace Institute study found that 41% of NGOs had been attacked in the past three years, only 4% had actionable cybersecurity policies, and 56% had no cybersecurity budget at all (CyberPeace, 2024). A Dalberg/ICRC joint study found fewer than half of humanitarian organizations had data protection policies meeting international standards (ICRC Handbook, 2020).
 
 I built Amanat to fill that gap.
 
 ## What It Does
 
-You log in through Auth0, connect your OneDrive, Slack, and Outlook via Token Vault, and tell the agent what to look for. It scans your files, messages, and emails for PII, checks what's publicly shared, cites the relevant ICRC or GDPR section, and can revoke sharing links or redact files on the spot. The entire analysis runs on a local LLM -- beneficiary data never leaves your machine.
+You log in through Auth0, connect your OneDrive, Slack, and Outlook via Token Vault, and tell the agent what to look for. It scans your files, messages, and emails for PII, checks what's publicly shared, cites the relevant ICRC or GDPR section, and can revoke sharing links or redact files on the spot. The entire analysis runs on a local LLM. Beneficiary data never leaves your machine.
 
 ### Why These Three Services
 
-UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Outlook the default file storage and email for the world's largest refugee agency. WFP, UNICEF, and dozens of implementing partners followed. Slack (and increasingly Teams) became the coordination layer -- the NetHope consortium, which provides IT infrastructure for 60+ major international NGOs, has documented the shift to cloud messaging platforms across the sector. Sensitive data flows across all three every day, and nothing watches the gap between them. Amanat connects to all three via Token Vault because that's where the data actually is.
+UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Outlook the default file storage and email for the world's largest refugee agency. WFP, UNICEF, and dozens of implementing partners followed. Slack (and increasingly Teams) became the coordination layer. The NetHope consortium, which provides IT infrastructure for 60+ major international NGOs, has documented the shift to cloud messaging platforms across the sector. Sensitive data flows across all three every day, and nothing watches the gap between them. Amanat connects to all three via Token Vault because that's where the data actually is.
 
 ### Capabilities
 
@@ -117,7 +117,7 @@ Demo files across OneDrive (`/WRA Operations/`):
 
 #### Token Vault (Connected Accounts)
 
-The user authenticates once via Auth0 Universal Login, then connects each service separately through Connected Accounts. Each connection is its own OAuth consent screen -- the user sees exactly which permissions they're granting, and can disconnect any service without affecting the others. Amanat exchanges Auth0 refresh tokens for service-specific access tokens via federated token exchange:
+The user authenticates once via Auth0 Universal Login, then connects each service separately through Connected Accounts. Each connection is its own OAuth consent screen, so the user sees exactly which permissions they're granting, and can disconnect any service without affecting the others. Amanat exchanges Auth0 refresh tokens for service-specific access tokens via federated token exchange:
 
 ```
 POST /oauth/token
@@ -194,16 +194,16 @@ Example: the query "Can we share biometric data with host governments?" retrieve
 
 ### IBM Granite 4 Micro
 
-Granite 4.0 Micro is a 3B-parameter dense transformer model released under Apache 2.0 (IBM, 2025). It is the first open-source LLM family to achieve ISO 42001 certification -- the international standard for AI management systems covering accountability, explainability, and data privacy. Key properties for this use case:
+Granite 4.0 Micro is a 3B-parameter dense transformer model released under Apache 2.0 (IBM, 2025). It is the first open-source LLM family to achieve ISO 42001 certification, the international standard for AI management systems covering accountability, explainability, and data privacy. Key properties for this use case:
 
 - **Apache 2.0 license**: no licensing barriers for humanitarian organizations, no usage restrictions, no royalties. Any NGO can deploy it freely.
-- **Small footprint**: 3B parameters run in ~4GB RAM via llama.cpp quantization. Deployable on a laptop in a field office -- no GPU, no cloud, no internet required.
+- **Small footprint**: 3B parameters run in ~4GB RAM via llama.cpp quantization. Deployable on a laptop in a field office. No GPU, no cloud, no internet required.
 - **Native function calling** with structured JSON output. The agent loop is driven by Strands Agents SDK, which provides native tool-call lifecycle hooks (BeforeToolCallEvent, AfterToolCallEvent) for Chainlit UI integration and confirmation dialog interception.
-- **Multilingual**: English, Arabic, French, Spanish, Japanese, Korean, Chinese, and 5 other languages -- critical for humanitarian contexts where beneficiaries speak the languages enterprise LLMs handle worst.
+- **Multilingual**: English, Arabic, French, Spanish, Japanese, Korean, Chinese, and 5 other languages . Critical for humanitarian contexts where beneficiaries speak the languages enterprise LLMs handle worst.
 - **128K validated context** with 512K training length, sufficient for large policy documents and scan results.
 - **Published training data sources**: IBM discloses the 14 data sources used for pre-training. All model checkpoints are cryptographically signed for supply-chain verification.
 
-This matters because ICRC data protection rules (Articles 23-24) impose strict conditions on transferring personal data to third-party processors -- any recipient must contractually prove adequacy and purpose limitation. Sending beneficiary data to a commercial LLM API (OpenAI, Anthropic, Google) creates a third-party processing relationship that is difficult to justify under ICRC rules. A local model eliminates the question entirely: the data never leaves the device.
+This matters because ICRC data protection rules (Articles 23-24) impose strict conditions on transferring personal data to third-party processors. Any recipient must contractually prove adequacy and purpose limitation. Sending beneficiary data to a commercial LLM API (OpenAI, Anthropic, Google) creates a third-party processing relationship that is difficult to justify under ICRC rules. A local model eliminates the question entirely: the data never leaves the device.
 
 ### IBM Docling + granite-docling-258M
 
@@ -247,13 +247,13 @@ User Query → Chainlit Web UI → Strands Agent (Granite 4 Micro, local) → To
 
 ### UI Design
 
-I went with a chat interface because data governance works better as a conversation than a dashboard. A protection officer doesn't want to click through 15 tabs -- they want to say "scan the Protection folder" and see what comes back. Each tool call shows as a collapsible Step in the chat, so the user can see exactly what the agent did (which API it called, what it found) without the results cluttering the main conversation. Scan results render as interactive Plotly charts -- risk distribution by file, PII types found, sharing status breakdown. The confirmation dialog for destructive actions (revoke sharing, delete files) is a prominent Approve/Deny button pair that blocks the agent until the user responds. Not an "are you sure?" buried in a chat message -- an actual button that blocks the agent until you click it.
+I went with a chat interface because data governance works better as a conversation than a dashboard. A protection officer doesn't want to click through 15 tabs. They want to say "scan the Protection folder" and see what comes back. Each tool call shows as a collapsible Step in the chat, so the user can see exactly what the agent did (which API it called, what it found) without the results cluttering the main conversation. Scan results render as interactive Plotly charts: risk distribution by file, PII types found, sharing status breakdown. The confirmation dialog for destructive actions (revoke sharing, delete files) is a prominent Approve/Deny button pair that blocks the agent until the user responds. Not an "are you sure?" buried in a chat message. An actual button that blocks the agent until you click it.
 
 ## Challenges I Ran Into
 
 **Slack OAuth v2 + Auth0 generic oauth2 strategy**: Slack's v2 OAuth uses `user_scope` as a separate parameter from `scope`, but Auth0's generic oauth2 connection strategy only sends `scope` in the authorization URL. I could not get write scopes (`chat:write`, `files:write`) through Token Vault regardless of the connection configuration.
 
-Solution: separate read and write credentials. Token Vault handles read operations (scanning messages via user token). A separate Slack bot token handles write operations (posting data protection alerts). Turns out, the separation is actually the right architecture anyway: data protection alerts should come from the bot identity, not impersonate the user.
+Solution: separate read and write credentials. Token Vault handles read operations (scanning messages via user token). A separate Slack bot token handles write operations (posting data protection alerts). Turns out the separation is actually the right architecture anyway. Data protection alerts should come from the bot identity, not impersonate the user.
 
 **Token rotation and cache staleness**: Slack's token rotation meant Token Vault would return revoked tokens after I invalidated them during debugging. The stored Connected Account had to be deleted via the Management API (`DELETE /api/v2/users/{id}/connected-accounts/{cac_id}`) and refresh tokens flushed (`DELETE /api/v2/users/{id}/refresh-tokens`) to force a full re-authentication.
 
@@ -285,15 +285,15 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Hybrid approaches beat pure approaches.** PII detection (regex + LLM beats either alone) and policy retrieval (BM25 + document preprocessing beats keyword search) both pointed the same direction. Combining specialized approaches kept outperforming any single method at every layer.
 
-**Agent authorization needs a consent model, not just an auth model.** The hard question wasn't "how do I get a token" -- it was "when should the agent be allowed to act?" Scanning is read-only, fine. Revoking a sharing link on a GBV file has real consequences. I landed on: the agent scans and reports freely, but destructive actions require an explicit in-UI confirmation. The user stays in control of what the agent does with the access they granted.
+**Agent authorization needs a consent model, not just an auth model.** The hard question wasn't "how do I get a token." It was "when should the agent be allowed to act?" Scanning is read-only, fine. Revoking a sharing link on a GBV file has real consequences. I landed on: the agent scans and reports freely, but destructive actions require an explicit in-UI confirmation. The user stays in control of what the agent does with the access they granted.
 
 ## Why This Matters Beyond the Demo
 
-Enterprise DLP tools (Varonis, Microsoft Purview, Symantec DLP) cost $5,000 to $50,000 per year and require dedicated security teams to configure. They're built for corporations, not field offices where 56% of NGOs have no cybersecurity budget and a third have no IT support at all (CyberPeace, 2024). Amanat is free, open-source, runs on a laptop, and is grounded in the specific policy frameworks humanitarian organizations already follow (ICRC, IASC, Sphere, GDPR). The entire stack is containerizable for offline deployment in connectivity-constrained environments -- exactly where humanitarian field teams operate.
+Enterprise DLP tools (Varonis, Microsoft Purview, Symantec DLP) cost $5,000 to $50,000 per year and require dedicated security teams to configure. They're built for corporations, not field offices where 56% of NGOs have no cybersecurity budget and a third have no IT support at all (CyberPeace, 2024). Amanat is free, open-source, runs on a laptop, and is grounded in the specific policy frameworks humanitarian organizations already follow (ICRC, IASC, Sphere, GDPR). The entire stack is containerizable for offline deployment in connectivity-constrained environments, which is exactly where humanitarian field teams operate.
 
-UNHCR runs Microsoft 365 across field locations. WFP's SCOPE system holds data on 90 million beneficiaries. These organizations use OneDrive, Outlook, and Slack daily. But none of these platforms have built-in humanitarian data governance -- no automated sensitivity detection, no policy enforcement against ICRC rules, no cross-service visibility into what's been shared and with whom. Amanat sits on top of these existing services via Token Vault and adds the governance layer that's missing.
+UNHCR runs Microsoft 365 across field locations. WFP's SCOPE system holds data on 90 million beneficiaries. These organizations use OneDrive, Outlook, and Slack daily. But none of these platforms have built-in humanitarian data governance. No automated sensitivity detection, no policy enforcement against ICRC rules, no cross-service visibility into what's been shared and with whom. Amanat sits on top of these existing services via Token Vault and adds the governance layer that's missing.
 
-Most AI agent projects connect to cloud services to send emails or schedule meetings. Amanat connects to cloud services to find data that could get someone killed, and fixes it. Token Vault isn't a demo convenience here -- it's what lets the agent act on real files across real services with real consequences, without the agent ever holding raw credentials.
+Most AI agent projects connect to cloud services to send emails or schedule meetings. Amanat connects to cloud services to find data that could get someone killed, and fixes it. Token Vault isn't a demo convenience here. It's what lets the agent act on real files across real services with real consequences, without the agent ever holding raw credentials.
 
 ## What's Next for Amanat
 
@@ -316,9 +316,9 @@ Most AI agent projects connect to cloud services to send emails or schedule meet
 
 ## Scope and Limitations
 
-I joined this hackathon late and built Amanat to demonstrate what Token Vault-powered data governance looks like end-to-end. The core loop works: authenticate via Auth0, connect services via Token Vault, scan across OneDrive/Slack/Outlook, detect PII, cite policy, and remediate with confirmation. Granite 4 Micro was chosen specifically because it scales to the infrastructure humanitarian organizations actually have -- a laptop in a field office, no GPU, no cloud dependency, no data leaving the device. That's the deployment model.
+I joined this hackathon late and built Amanat to demonstrate what Token Vault-powered data governance looks like end-to-end. The core loop works: authenticate via Auth0, connect services via Token Vault, scan across OneDrive/Slack/Outlook, detect PII, cite policy, and remediate with confirmation. Granite 4 Micro was chosen specifically because it scales to the infrastructure humanitarian organizations actually have. A laptop in a field office, no GPU, no cloud dependency, no data leaving the device. That's the deployment model.
 
-The Auth0 integration is functional but not yet production-hardened. Token exchange and Connected Accounts flows work, but the token handoff between the Chainlit session and the Connected Accounts routes uses a temporary file rather than a proper session store. Connected service discovery doesn't query the My Account API for what's actually linked -- it assumes. Disconnecting a service removes the local token but doesn't call Auth0's disconnect endpoint. These are the actual rough edges -- session management plumbing, not architectural problems.
+The Auth0 integration is functional but not yet production-hardened. Token exchange and Connected Accounts flows work, but the token handoff between the Chainlit session and the Connected Accounts routes uses a temporary file rather than a proper session store. Connected service discovery doesn't query the My Account API for what's actually linked; it assumes. Disconnecting a service removes the local token but doesn't call Auth0's disconnect endpoint. These are the actual rough edges. Session management plumbing, not architectural problems.
 
 What a production version would add beyond that: persistent storage, role-based access via Auth0 RBAC, real-time Slack monitoring via Events API, and field testing with actual protection officers.
 
