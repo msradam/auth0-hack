@@ -777,6 +777,12 @@ async def on_message(message: cl.Message):
         """Show each tool call as a Chainlit step + confirmation gate."""
         tool_name = event.tool_use.get("name", "unknown")
         tool_args = event.tool_use.get("input", {})
+        if isinstance(tool_args, str):
+            try:
+                import json as _json
+                tool_args = _json.loads(tool_args)
+            except Exception:
+                tool_args = {}
         tool_id = event.tool_use.get("toolUseId", "")
 
         step_name = _friendly_step_name(tool_name, tool_args)
