@@ -272,7 +272,19 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Research-backed PII detection.** The hybrid detection architecture is grounded in "An Evaluation Study of Hybrid Methods for Multilingual PII Detection" (2025), which demonstrated that combining regex with LLM-based extraction outperforms either approach alone. My implementation catches implicit identifiers like "the 15-year-old girl in Vakwa Shelter" that regex cannot detect.
 
-**40/40 agent queries pass.** A test harness (`scripts/test_40_queries.py`) runs 40 queries across 7 categories: OneDrive scan (8/8), Slack scan (4/4), Outlook scan (3/3), policy/RAG (8/8), compliance (5/5), remediation (5/5), edge cases (7/7). Each query is classified as PASS, PARTIAL, or FAIL based on whether the agent called the right tool and returned relevant content. Full results logged to `test_results.jsonl`.
+**40/40 agent queries pass.** A test harness (`scripts/test_40_queries.py`) runs 40 queries across 7 categories. Each query is classified as PASS, PARTIAL, or FAIL based on whether the agent called the right tool and returned relevant content. Sample results:
+
+| Query | Category | Time |
+|-------|----------|------|
+| "Scan my OneDrive for any files with PII that are publicly accessible." | scan-onedrive | 34s |
+| "Search Slack for messages containing beneficiary names or medical information in public channels." | scan-slack | 56s |
+| "Search Outlook for emails containing displaced person data sent to external recipients." | scan-outlook | 42s |
+| "What does the ICRC Handbook say about sharing displaced person data with host governments?" | policy/RAG | 57s |
+| "Generate a DPIA for our biometric enrollment program that collects fingerprints and iris scans." | compliance | 50s |
+| "Revoke public sharing on the GBV incident reports." | remediation | 37s |
+| "What can you help me with?" | edge case | 49s |
+
+All 40 passed: OneDrive scan (8/8), Slack scan (4/4), Outlook scan (3/3), policy/RAG (8/8), compliance (5/5), remediation (5/5), edge cases (7/7). Full results in `test_results.jsonl`.
 
 ## What I Learned
 
