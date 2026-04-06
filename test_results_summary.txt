@@ -1,0 +1,18 @@
+Amanat Agent Test Results
+========================
+Date: 2026-04-06T02:17:37.253942+00:00
+Total: 40 queries
+Pass: 40/40 (100%)
+Partial: 0/40
+Fail: 0/40
+Total time: 2068s
+Avg time: 51.7s per query
+
+By category:
+  comp                 5/5 pass
+  edge                 7/7 pass
+  rag                  8/8 pass
+  rem                  5/5 pass
+  scan-onedrive        8/8 pass
+  scan-outlook         3/3 pass
+  scan-slack           4/4 pass
