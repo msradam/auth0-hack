@@ -804,31 +804,107 @@ async def on_message(message: cl.Message):
 
         # Confirmation gate: always ask before revoke/delete
         if tool_name in ("delete_file", "revoke_sharing"):
-            file_id = tool_args.get("file_id", "unknown")
+            file_id = tool_args.get("file_id", "unknown") if isinstance(tool_args, dict) else "unknown"
             action_label = tool_name.replace("_", " ")
 
-            async def _ask():
-                res = await cl.AskActionMessage(
-                    content=f"**Confirm:** {action_label} `{file_id[:40]}`?",
-                    actions=[
-                        cl.Action(name="confirm", payload={"value": "yes"}, label="Approve"),
-                        cl.Action(name="cancel", payload={"value": "no"}, label="Deny"),
-                    ],
-                    timeout=120,
-                ).send()
-                return res and res.get("payload", {}).get("value") == "yes"
+            # Try CIBA (Guardian push notification) first, fall back to in-UI dialog
+            approved = False
+            user = cl.user_session.get("user")
+            user_id = user.metadata.get("raw_user_data", {}).get("sub", "") if user else ""
 
-            try:
-                approved = _run_async(_ask())
-            except Exception:
-                approved = True
+            if user_id and DOMAIN and _CLIENT_ID and _CLIENT_SECRET:
+                # CIBA: send Guardian push notification
+                async def _ciba_approve():
+                    import httpx as _hx
+                    async with _hx.AsyncClient() as hc:
+                        # Initiate backchannel auth
+                        resp = await hc.post(
+                            f"https://{DOMAIN}/bc-authorize",
+                            data={
+                                "client_id": _CLIENT_ID,
+                                "client_secret": _CLIENT_SECRET,
+                                "login_hint": json.dumps({"format": "iss_sub", "iss": f"https://{DOMAIN}/", "sub": user_id}),
+                                "scope": "openid",
+                                "binding_message": f"Amanat: {action_label} {file_id[:30]}",
+                            },
+                        )
+                        if resp.status_code != 200:
+                            return None  # CIBA unavailable, fall back
+                        ciba_data = resp.json()
+                        auth_req_id = ciba_data["auth_req_id"]
+                        interval = ciba_data.get("interval", 5)
+
+                        await cl.Message(content=f"Sent Guardian push notification. Approve on your phone to {action_label} `{file_id[:40]}`.").send()
+
+                        # Poll for approval
+                        import asyncio as _aio
+                        for _ in range(60):
+                            await _aio.sleep(interval)
+                            token_resp = await hc.post(
+                                f"https://{DOMAIN}/oauth/token",
+                                data={
+                                    "grant_type": "urn:openid:params:grant-type:ciba",
+                                    "client_id": _CLIENT_ID,
+                                    "client_secret": _CLIENT_SECRET,
+                                    "auth_req_id": auth_req_id,
+                                },
+                            )
+                            result = token_resp.json()
+                            if "access_token" in result:
+                                return True  # Approved
+                            if result.get("error") == "authorization_pending":
+                                continue
+                            if result.get("error") == "expired_token":
+                                return False  # Timed out
+                            if result.get("error") == "access_denied":
+                                return False  # Denied
+                        return False  # Timed out
+
+                try:
+                    ciba_result = _run_async(_ciba_approve())
+                    if ciba_result is not None:
+                        approved = ciba_result
+                    else:
+                        raise Exception("CIBA unavailable")
+                except Exception:
+                    # Fall back to in-UI dialog
+                    async def _ask():
+                        res = await cl.AskActionMessage(
+                            content=f"**Confirm:** {action_label} `{file_id[:40]}`?",
+                            actions=[
+                                cl.Action(name="confirm", payload={"value": "yes"}, label="Approve"),
+                                cl.Action(name="cancel", payload={"value": "no"}, label="Deny"),
+                            ],
+                            timeout=120,
+                        ).send()
+                        return res and res.get("payload", {}).get("value") == "yes"
+                    try:
+                        approved = _run_async(_ask())
+                    except Exception:
+                        approved = True
+            else:
+                # No CIBA config, use in-UI dialog
+                async def _ask_fallback():
+                    res = await cl.AskActionMessage(
+                        content=f"**Confirm:** {action_label} `{file_id[:40]}`?",
+                        actions=[
+                            cl.Action(name="confirm", payload={"value": "yes"}, label="Approve"),
+                            cl.Action(name="cancel", payload={"value": "no"}, label="Deny"),
+                        ],
+                        timeout=120,
+                    ).send()
+                    return res and res.get("payload", {}).get("value") == "yes"
+                try:
+                    approved = _run_async(_ask_fallback())
+                except Exception:
+                    approved = True
 
             if not approved:
                 _audit_log(session_id, "remediation_denied", {"tool": tool_name, "file_id": file_id})
                 event.tool_use["input"] = {}
                 return
 
-            _audit_log(session_id, "remediation_approved", {"tool": tool_name, "file_id": file_id})
+            _audit_log(session_id, "remediation_approved", {"tool": tool_name, "file_id": file_id, "method": "ciba" if user_id else "ui"})
 
             # Download before delete
             if tool_name == "delete_file" and access_token:
