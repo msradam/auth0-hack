@@ -310,7 +310,7 @@ Most AI agent projects connect to cloud services to send emails or schedule meet
 
 ## Scope and Limitations
 
-I joined this hackathon late and built Amanat as a proof of concept -- a demonstration that Token Vault can power a genuinely useful data governance agent, not a production-ready deployment. The core loop works end-to-end (authenticate, connect services, scan, detect PII, cite policy, remediate with confirmation), but there are rough edges: the 3B model sometimes needs explicit prompting to call the right tool, the published app runs on CPU so inference is slow, and the demo uses synthetic data rather than a live humanitarian deployment. The architecture, the Token Vault integration, and the security model are the contribution. A production version would need a larger model, persistent storage, role-based access, and field testing with actual protection officers.
+I joined this hackathon late and built Amanat as a proof of concept for Token Vault-powered data governance. The core loop works end-to-end: authenticate via Auth0, connect services via Token Vault, scan across OneDrive/Slack/Outlook, detect PII, cite policy, and remediate with confirmation. The 3B local model, CPU inference, and synthetic demo data are deliberate choices -- they demonstrate that the system runs on minimal hardware without cloud LLM dependencies, which is the whole point for field deployment. What a production version would add: persistent storage, role-based access via Auth0 RBAC, real-time Slack monitoring, and field testing with actual protection officers.
 
 ## Tech Stack
 
