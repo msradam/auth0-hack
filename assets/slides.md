@@ -108,13 +108,13 @@ Adam Munawar Rahman · Auth0 "Authorized to Act" Hackathon 2026
 
 **Auth0 Token Vault** connects OneDrive, Slack, Outlook with per-service OAuth scoping.
 
-**Hybrid PII detection** (regex + Granite 4 Micro) catches names in any script, implicit identifiers, structural patterns. Based on the RECAP paper (2025).
+**CIBA step-up auth** sends Guardian push notifications for destructive actions (revoke, delete). User approves on their phone before the agent proceeds.
+
+**Hybrid PII detection** (regex + Granite 4 Micro) catches names in any script, implicit identifiers, structural patterns.
 
 **Policy RAG** grounds analysis in 1,059 chunks from real ICRC/IASC/GDPR/Sphere PDFs via BM25 retrieval.
 
-**Remediation** revokes sharing, redacts and uploads clean copies, posts alerts to affected Slack channels.
-
-**All local.** Granite 4 Micro runs via llama-server. Beneficiary data never leaves the machine.
+**All local.** IBM Granite 4 Micro via llama-server. Beneficiary data never leaves the machine.
 
 ---
 
