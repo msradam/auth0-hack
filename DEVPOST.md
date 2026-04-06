@@ -140,9 +140,9 @@ Per-service scoping:
 
 I chose Refresh Token Exchange over Privileged Worker Exchange deliberately: Amanat always acts with the user present in the chat session, never async. The user watches each tool call happen, sees the results, and approves destructive actions in real time. A Privileged Worker flow (where the backend acts without a user session) would be appropriate for scheduled compliance scans, but for an interactive agent handling GBV files, I wanted the human in the loop at all times.
 
-#### Remediation Confirmation
+#### Remediation Confirmation (CIBA)
 
-Any call to `revoke_sharing` or `delete_file` triggers an in-UI confirmation dialog. The agent pauses and waits for explicit user approval before proceeding. Without this, a chatbot could delete a GBV file because someone typed "yes" in the conversation. The user has to explicitly confirm the specific action. MFA via Auth0 Guardian protects the login session itself.
+Any call to `revoke_sharing` or `delete_file` triggers a step-up authentication via CIBA (Client-Initiated Backchannel Authentication). The agent sends a Guardian push notification to the user's phone with a binding message describing the specific action (e.g. "Amanat: revoke sharing GBV_Incident_Reports"). The agent pauses and polls until the user approves or denies on their phone. If CIBA is unavailable (user not enrolled in Guardian), it falls back to an in-UI Approve/Deny dialog. Without this, a chatbot could delete a GBV file because someone typed "yes" in the conversation. The user has to explicitly confirm the specific action on a separate device. MFA via Auth0 Guardian protects both the login session and individual destructive actions.
 
 ### Hybrid PII Detection (RECAP-Inspired)
 
