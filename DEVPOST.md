@@ -32,7 +32,7 @@ The 3-minute demo video shows Amanat running locally against my personal Microso
 
 ## Published App
 
-The published app at https://msradam-amanat.hf.space runs Granite 4 on IBM watsonx.ai with full tool calling. Auth0 login works. Tools return synthetic demo data (the full experience requires the user's own OneDrive, Slack, and Outlook connected via Token Vault). To run against live services, clone the repo and follow the setup instructions in the README.
+The published app at https://msradam-amanat.hf.space uses IBM watsonx.ai to host the same Granite 4 model that runs locally via llama-server in the video demo. watsonx is used here for deployment convenience (GPU inference without self-hosting), but the architecture is identical: Strands agent with tool calling, same system prompt, same 14 tools. Auth0 login works. Tools return synthetic demo data (the full experience requires the user's own OneDrive, Slack, and Outlook connected via Token Vault). All synthetic data is [open and auditable in the repo](https://github.com/msradam/amanat/tree/main/demo-data/drive). To run locally against live services, clone the repo and follow the setup instructions in the README.
 
 ## Auth0 Features Used
 
