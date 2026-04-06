@@ -40,11 +40,9 @@ CRITICAL RULES:
 
 WORKFLOW:
 1. SCAN the requested service(s) using the correct tool above. Call the tool NOW.
-2. DIG DEEPER: use detect_pii, check_sharing, check_consent on flagged items.
-3. ACT: for Slack scans, auto-post alerts to affected channels. For OneDrive, act only when asked.
-4. REPORT what you found and what you did.
-
-Chain multiple tools in sequence. If a scan reveals a problem, investigate it.\
+2. ACT on what the user asked (revoke, redact, notify, etc).
+3. REPORT what you found and what you did.
+4. STOP. Do NOT re-scan after completing the requested action. Do NOT call scan_files again after revoking or notifying.\
 """
 
 

@@ -68,7 +68,7 @@ UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Ou
 | **Hybrid PII detection** | Two-layer approach: deterministic regex for structural patterns + Granite 4 Micro for contextual/multilingual extraction |
 | **Policy grounding** | RAG pipeline with BM25 retrieval over 1,059 chunks extracted from actual ICRC Handbook, IASC Guidance, GDPR, and Sphere Handbook PDFs |
 | **Remediation** | Revoke sharing links, redact PII for safe sharing, download before delete, generate DPIAs, check consent documentation |
-| **Remediation confirmation** | Destructive actions on sensitive files trigger an in-UI confirmation dialog; the agent pauses and waits for explicit user approval before proceeding |
+| **CIBA step-up auth** | Destructive actions trigger a Guardian push notification via CIBA; user approves on their phone before the agent proceeds. Falls back to in-UI dialog if Guardian unavailable |
 | **Document parsing** | Upload scanned PDFs/DOCX/XLSX; Docling with granite-docling-258M VLM extracts text via OCR, then scans for PII |
 | **Slack alerting** | Posts data protection warnings to channels where PII leaks are detected |
 | **Encrypted audit trail** | Every scan and remediation action logged, encrypted at rest with Fernet/PBKDF2 |
@@ -223,7 +223,7 @@ Integration: when the OneDrive scanner downloads a binary document format (PDF, 
 | Download before delete | Every `delete_file` action automatically downloads a local copy first |
 | Session wipe | Scan results, conversation history, and Token Vault session cleared on chat end |
 | Credential separation | Slack reading uses user token (via Token Vault); Slack writing uses bot token (separate credential) |
-| Confirmation gate | `revoke_sharing` and `delete_file` calls require explicit user approval via in-UI confirmation dialog |
+| CIBA step-up auth | `revoke_sharing` and `delete_file` trigger Guardian push via CIBA (`POST /bc-authorize`). User approves on phone. Falls back to in-UI dialog |
 
 ### Agent Architecture
 
@@ -236,7 +236,7 @@ User Query → Chainlit Web UI → Strands Agent (Granite 4 Micro, local) → To
 | Layer | Component | Role |
 |-------|-----------|------|
 | **UI** | Chainlit | OAuth login, chat, tool steps, confirmation dialogs, charts |
-| **Auth** | Auth0 Universal Login + Token Vault + Guardian MFA | Identity, federated token exchange, per-service consent |
+| **Auth** | Auth0 Universal Login + Token Vault + CIBA + Guardian MFA | Identity, federated token exchange, per-service consent, step-up auth for destructive actions |
 | **Agent** | Strands Agents SDK | Function-calling loop with BeforeToolCall/AfterToolCall hooks |
 | **LLM** | IBM Granite 4 Micro via llama-server (local, port 8080) | Tool routing, contextual PII detection, policy analysis |
 | **PII** | Regex (structural) + Granite Micro (contextual) | Hybrid two-layer detection |
@@ -246,7 +246,7 @@ User Query → Chainlit Web UI → Strands Agent (Granite 4 Micro, local) → To
 
 ### UI Design
 
-I went with a chat interface because data governance works better as a conversation than a dashboard. A protection officer doesn't want to click through 15 tabs. They want to say "scan the Protection folder" and see what comes back. Each tool call shows as a collapsible Step in the chat, so the user can see exactly what the agent did (which API it called, what it found) without the results cluttering the main conversation. Scan results render as interactive Plotly charts: risk distribution by file, PII types found, sharing status breakdown. The confirmation dialog for destructive actions (revoke sharing, delete files) is a prominent Approve/Deny button pair that blocks the agent until the user responds. Not an "are you sure?" buried in a chat message. An actual button that blocks the agent until you click it.
+I went with a chat interface because data governance works better as a conversation than a dashboard. A protection officer doesn't want to click through 15 tabs. They want to say "scan the Protection folder" and see what comes back. Each tool call shows as a collapsible Step in the chat, so the user can see exactly what the agent did (which API it called, what it found) without the results cluttering the main conversation. Scan results render as interactive Plotly charts: risk distribution by file, PII types found, sharing status breakdown. Destructive actions (revoke sharing, delete files) trigger a CIBA step-up authentication. The agent sends a Guardian push notification to the user's phone, displays the `auth_req_id` and binding message in the chat, and polls until the user approves or denies on their device. Not an "are you sure?" buried in a chat message. A separate-device confirmation via Auth0's backchannel authentication flow.
 
 ## Challenges I Ran Into
 
@@ -296,7 +296,7 @@ All 40 passed: OneDrive scan (8/8), Slack scan (4/4), Outlook scan (3/3), policy
 
 **Hybrid approaches beat pure approaches.** PII detection (regex + LLM beats either alone) and policy retrieval (BM25 + document preprocessing beats keyword search) both pointed the same direction. Combining specialized approaches kept outperforming any single method at every layer.
 
-**Agent authorization needs a consent model, not just an auth model.** The hard question wasn't "how do I get a token." It was "when should the agent be allowed to act?" Scanning is read-only, fine. Revoking a sharing link on a GBV file has real consequences. I landed on: the agent scans and reports freely, but destructive actions require an explicit in-UI confirmation. The user stays in control of what the agent does with the access they granted.
+**Agent authorization needs a consent model, not just an auth model.** The hard question wasn't "how do I get a token." It was "when should the agent be allowed to act?" Scanning is read-only, fine. Revoking a sharing link on a GBV file has real consequences. I landed on CIBA: the agent sends a Guardian push notification to the user's phone describing the exact action. The user approves or denies on a separate device. Clicking "yes" in a chat window isn't enough when the action affects real files containing real people's data.
 
 ## Why This Matters Beyond the Demo
 
@@ -339,7 +339,7 @@ What a production version would add beyond that: persistent storage, role-based 
 |-----------|-----------|---------|
 | Authentication | Auth0 Universal Login | User login |
 | Token management | Auth0 Token Vault | Federated token exchange for OneDrive, Slack, Outlook |
-| Remediation confirmation | In-UI confirmation dialog | Explicit approval for destructive actions on sensitive files |
+| Step-up auth | Auth0 CIBA + Guardian push notifications | Destructive actions require approval on a separate device via `POST /bc-authorize` |
 | LLM | IBM Granite 4 Micro (3B) via llama-server | Agent reasoning, contextual PII detection, report generation |
 | Agent framework | Strands Agents SDK | Function-calling agent loop with retry logic |
 | Document parsing | IBM Docling + granite-docling-258M | OCR for scanned PDFs, text extraction from Office docs |

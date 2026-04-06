@@ -764,6 +764,11 @@ async def on_message(message: cl.Message):
 
     # --- Strands hooks for Chainlit visibility ---
 
+    # Capture user ID for CIBA (must be done here, not in the thread)
+    _ciba_user = cl.user_session.get("user")
+    _ciba_user_id = _ciba_user.metadata.get("raw_user_data", {}).get("sub", "") if _ciba_user else ""
+    print(f"[CIBA] user_id={_ciba_user_id}")
+
     # Capture the main event loop for cross-thread async calls
     import asyncio
     _main_loop = asyncio.get_event_loop()
@@ -809,8 +814,7 @@ async def on_message(message: cl.Message):
 
             # Try CIBA (Guardian push notification) first, fall back to in-UI dialog
             approved = False
-            user = cl.user_session.get("user")
-            user_id = user.metadata.get("raw_user_data", {}).get("sub", "") if user else ""
+            user_id = _ciba_user_id
 
             if user_id and DOMAIN and _CLIENT_ID and _CLIENT_SECRET:
                 # CIBA: send Guardian push notification
@@ -825,20 +829,33 @@ async def on_message(message: cl.Message):
                                 "client_secret": _CLIENT_SECRET,
                                 "login_hint": json.dumps({"format": "iss_sub", "iss": f"https://{DOMAIN}/", "sub": user_id}),
                                 "scope": "openid",
-                                "binding_message": f"Amanat: {action_label} {file_id[:30]}",
+                                "binding_message": "Amanat: " + "".join(c if c.isalnum() or c in " +-_.,:#" else "" for c in f"{action_label} {file_id[:30]}"),
                             },
                         )
                         if resp.status_code != 200:
+                            print(f"[CIBA] bc-authorize failed: {resp.status_code} {resp.text}")
                             return None  # CIBA unavailable, fall back
                         ciba_data = resp.json()
                         auth_req_id = ciba_data["auth_req_id"]
                         interval = ciba_data.get("interval", 5)
 
-                        await cl.Message(content=f"Sent Guardian push notification. Approve on your phone to {action_label} `{file_id[:40]}`.").send()
+                        await cl.Message(
+                            content=f"**CIBA Step-Up Authentication**\n\n"
+                                    f"A Guardian push notification has been sent to your phone.\n\n"
+                                    f"**Action:** {action_label} `{file_id[:40]}`\n\n"
+                                    f"Approve or deny on your device to continue.\n\n"
+                                    f"```\n"
+                                    f"POST /bc-authorize\n"
+                                    f"auth_req_id: {auth_req_id}\n"
+                                    f"binding_message: Amanat: {action_label} {file_id[:30]}\n"
+                                    f"expires_in: {ciba_data.get('expires_in', 300)}s\n"
+                                    f"grant_type: urn:openid:params:grant-type:ciba\n"
+                                    f"```"
+                        ).send()
 
                         # Poll for approval
                         import asyncio as _aio
-                        for _ in range(60):
+                        for attempt in range(60):
                             await _aio.sleep(interval)
                             token_resp = await hc.post(
                                 f"https://{DOMAIN}/oauth/token",
@@ -851,14 +868,26 @@ async def on_message(message: cl.Message):
                             )
                             result = token_resp.json()
                             if "access_token" in result:
-                                return True  # Approved
+                                await cl.Message(
+                                    content=f"**Approved via Guardian.** Proceeding with action.\n\n"
+                                            f"```\n"
+                                            f"CIBA token received\n"
+                                            f"token_type: {result.get('token_type', 'Bearer')}\n"
+                                            f"scope: {result.get('scope', 'openid')}\n"
+                                            f"expires_in: {result.get('expires_in', '')}s\n"
+                                            f"```"
+                                ).send()
+                                return True
                             if result.get("error") == "authorization_pending":
                                 continue
                             if result.get("error") == "expired_token":
-                                return False  # Timed out
+                                await cl.Message(content="**CIBA request expired.** Action cancelled.").send()
+                                return False
                             if result.get("error") == "access_denied":
-                                return False  # Denied
-                        return False  # Timed out
+                                await cl.Message(content="**Denied via Guardian.** Action cancelled.").send()
+                                return False
+                        await cl.Message(content="**CIBA request timed out.** Action cancelled.").send()
+                        return False
 
                 try:
                     ciba_result = _run_async(_ciba_approve())
