@@ -2,7 +2,7 @@
 
 Author: Adam Munawar Rahman, April 2026
 
-Amanat connects to your OneDrive, Slack, and Outlook through Auth0 Token Vault, scans for sensitive beneficiary data that's been overshared or exposed, and helps fix it. All analysis runs locally via IBM Granite 4 Micro. Beneficiary data never leaves your machine.
+Amanat connects to your OneDrive, Slack, and Outlook through Auth0 Token Vault, scans for sensitive beneficiary data that's been overshared or exposed, and helps fix it. Two things make this possible: Token Vault handles multi-service credential management so the agent can act across services without storing raw tokens, and IBM Granite 4 Micro runs the analysis locally so beneficiary data never leaves the device. For humanitarian organizations handling refugee case files and GBV reports, both properties are requirements, not features.
 
 *Amanat* (Arabic: trust, stewardship), the concept that what is entrusted to you must be protected and returned faithfully.
 
@@ -46,13 +46,13 @@ The tools humanitarian organizations actually use -- KoBoToolbox for data collec
 
 I built Amanat to fill that gap.
 
-### Why OneDrive, Slack, and Outlook
-
-These aren't arbitrary choices. UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Outlook the default file storage and email for the world's largest refugee agency. WFP, UNICEF, and dozens of implementing partners followed. Slack (and increasingly Teams) became the coordination layer -- the NetHope consortium, which provides IT infrastructure for 60+ major international NGOs, has documented the shift to cloud messaging platforms across the sector. The result: sensitive data flows across three services daily, and no single tool watches all three. Amanat connects to all three via Token Vault because that's where humanitarian data actually lives.
-
 ## What It Does
 
 You log in through Auth0, connect your OneDrive, Slack, and Outlook via Token Vault, and tell the agent what to look for. It scans your files, messages, and emails for PII, checks what's publicly shared, cites the relevant ICRC or GDPR section, and can revoke sharing links or redact files on the spot. The entire analysis runs on a local LLM -- beneficiary data never leaves your machine.
+
+### Why These Three Services
+
+UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Outlook the default file storage and email for the world's largest refugee agency. WFP, UNICEF, and dozens of implementing partners followed. Slack (and increasingly Teams) became the coordination layer -- the NetHope consortium, which provides IT infrastructure for 60+ major international NGOs, has documented the shift to cloud messaging platforms across the sector. Sensitive data flows across all three services daily, and no single tool watches all three. Amanat connects to them via Token Vault because that's where humanitarian data actually lives.
 
 ### Capabilities
 
@@ -310,7 +310,11 @@ Most AI agent projects connect to cloud services to send emails or schedule meet
 
 ## Scope and Limitations
 
-I joined this hackathon late and built Amanat as a proof of concept for Token Vault-powered data governance. The core loop works end-to-end: authenticate via Auth0, connect services via Token Vault, scan across OneDrive/Slack/Outlook, detect PII, cite policy, and remediate with confirmation. The 3B local model, CPU inference, and synthetic demo data are deliberate choices -- they demonstrate that the system runs on minimal hardware without cloud LLM dependencies, which is the whole point for field deployment. What a production version would add: persistent storage, role-based access via Auth0 RBAC, real-time Slack monitoring, and field testing with actual protection officers.
+I joined this hackathon late and built Amanat to demonstrate what Token Vault-powered data governance looks like end-to-end. The core loop works: authenticate via Auth0, connect services via Token Vault, scan across OneDrive/Slack/Outlook, detect PII, cite policy, and remediate with confirmation. Granite 4 Micro was chosen specifically because it scales to the infrastructure humanitarian organizations actually have -- a laptop in a field office, no GPU, no cloud dependency, no data leaving the device. That's the deployment model.
+
+The Auth0 integration is functional but not yet production-hardened. Token exchange and Connected Accounts flows work, but the token handoff between the Chainlit session and the Connected Accounts routes uses a temporary file rather than a proper session store. Connected service discovery doesn't query the My Account API for what's actually linked -- it assumes. Disconnecting a service removes the local token but doesn't call Auth0's disconnect endpoint. These are the actual rough edges, and they're the kind of thing you'd fix in a production build with proper session management, not fundamental architectural issues.
+
+What a production version would add beyond that: persistent storage, role-based access via Auth0 RBAC, real-time Slack monitoring via Events API, and field testing with actual protection officers.
 
 ## Tech Stack
 
