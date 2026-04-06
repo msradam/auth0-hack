@@ -892,11 +892,22 @@ async def on_message(message: cl.Message):
 
         # Extract final answer
         final_content = "Analysis complete."
-        if result.message and result.message.get("content"):
-            for block in result.message["content"]:
-                if isinstance(block, dict) and "text" in block:
-                    final_content = block["text"]
-                    break
+        msg = result.message
+        if msg:
+            if isinstance(msg, str):
+                final_content = msg
+            elif isinstance(msg, dict) and msg.get("content"):
+                content = msg["content"]
+                if isinstance(content, str):
+                    final_content = content
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and "text" in block:
+                            final_content = block["text"]
+                            break
+                        elif isinstance(block, str):
+                            final_content = block
+                            break
 
     except Exception as e:
         final_content = f"Error: {e}"
