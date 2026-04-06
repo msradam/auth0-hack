@@ -319,28 +319,54 @@ ALL_TOOLS = [
 REMEDIATION_TOOLS = {"revoke_sharing", "download_file", "delete_file"}
 
 
+def _get_watsonx_token() -> str:
+    """Get a fresh IAM token for watsonx. Called on every agent creation."""
+    import httpx
+    api_key = os.environ.get("WATSONX_API_KEY", "")
+    if not api_key:
+        return os.environ.get("OPENAI_API_KEY", "llama")
+    resp = httpx.post(
+        "https://iam.cloud.ibm.com/identity/token",
+        data=f"grant_type=urn:ibm:params:oauth:grant-type:apikey&apikey={api_key}",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    return resp.json()["access_token"]
+
+
 def create_model() -> OpenAIModel:
     """Create the Strands OpenAI model.
 
-    Supports local llama-server (model_id=granite4-micro) and
-    OpenRouter (model_id=ibm-granite/granite-4.0-h-micro).
+    Supports local llama-server, OpenRouter, Ollama, and IBM watsonx.
     Set GRANITE_MODEL_ID env var to override the model ID.
     """
     base_url = os.environ.get("OPENAI_API_BASE", "http://localhost:8080/v1")
-    # Auto-detect model ID based on provider
+    is_watsonx = "ml.cloud.ibm.com" in base_url
+
     if "openrouter" in base_url:
         default_model = "ibm-granite/granite-4.0-h-micro"
+    elif is_watsonx:
+        default_model = "ibm/granite-4-h-small"
     else:
         default_model = "granite4-micro"
     model_id = os.environ.get("GRANITE_MODEL_ID", default_model)
 
+    params: dict = {"max_tokens": 4096}
+
+    # watsonx requires project_id in every request body
+    project_id = os.environ.get("WATSONX_PROJECT_ID", "")
+    if project_id:
+        params["extra_body"] = {"project_id": project_id}
+
+    # Fresh IAM token for watsonx (expires after 1 hour)
+    api_key = _get_watsonx_token() if is_watsonx else os.environ.get("OPENAI_API_KEY", "llama")
+
     return OpenAIModel(
         client_args={
             "base_url": base_url,
-            "api_key": os.environ.get("OPENAI_API_KEY", "llama"),
+            "api_key": api_key,
         },
         model_id=model_id,
-        params={"max_tokens": 4096},
+        params=params,
     )
 
 
