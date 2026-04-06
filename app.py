@@ -845,11 +845,18 @@ async def on_message(message: cl.Message):
 
         # Extract text from result
         result_text = ""
-        if isinstance(result, dict):
+        if isinstance(result, str):
+            result_text = result
+        elif isinstance(result, dict):
             content = result.get("content", [])
-            for block in content:
-                if isinstance(block, dict) and "text" in block:
-                    result_text += block["text"]
+            if isinstance(content, str):
+                result_text = content
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and "text" in block:
+                        result_text += block["text"]
+                    elif isinstance(block, str):
+                        result_text += block
 
         # Track scan results for visualization
         if tool_name == "scan_files" and "---JSON---" in result_text:
