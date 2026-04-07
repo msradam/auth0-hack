@@ -329,7 +329,7 @@ Most AI agent projects connect to cloud services to send emails or schedule meet
 
 I joined this hackathon late and built Amanat to demonstrate what Token Vault-powered data governance looks like end-to-end. The core loop works: authenticate via Auth0, connect services via Token Vault, scan across OneDrive/Slack/Outlook, detect PII, cite policy, and remediate with confirmation. Granite 4 Micro was chosen specifically because it scales to the infrastructure humanitarian organizations actually have. A laptop in a field office, no GPU, no cloud dependency, no data leaving the device. That's the deployment model.
 
-The Auth0 integration is functional but not yet production-hardened. Token handoff between the Chainlit session and Connected Accounts routes uses a temporary file rather than a proper session store. Session management plumbing, not architectural problems. A production version would add persistent storage, Auth0 RBAC, real-time Slack monitoring, and field testing with protection officers.
+The Auth0 integration is functional but not yet production-hardened. Token handoff between the Chainlit session and Connected Accounts routes uses a temporary file rather than a proper session store. The `send_email` tool sends as the logged-in user via Graph API (`POST /me/sendMail`) rather than a dedicated service mailbox, which was simpler to implement with Token Vault's user token but wouldn't be appropriate for production alerts. Session management plumbing, not architectural problems. A production version would add persistent storage, Auth0 RBAC, a dedicated alert mailbox, real-time Slack monitoring, and field testing with protection officers.
 
 ## Tech Stack
 
