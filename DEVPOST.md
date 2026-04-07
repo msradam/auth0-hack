@@ -109,7 +109,7 @@ UNHCR deployed Microsoft 365 across its field operations, making OneDrive and Ou
 
 ### Demo Scenario
 
-The demo uses a fictional humanitarian scenario: Post-Cataclysm Waqwaq. The Waqwaq Relief Authority (WRA) responds to a displacement crisis on a fictional archipelago. Fictional setting, real data governance patterns, no real-world sensitive data.
+The demo uses a fictional humanitarian scenario: Post-Cataclysm Waqwaq. The Waqwaq Relief Authority (WRA) responds to a displacement crisis on a fictional archipelago. The setting is fictional but the data governance patterns are real. All synthetic demo data is committed to the GitHub repo at [`demo-data/drive/`](https://github.com/msradam/amanat/tree/main/demo-data/drive), organized into the same folder structure used on OneDrive.
 
 Demo files across OneDrive (`/WRA Operations/`):
 
