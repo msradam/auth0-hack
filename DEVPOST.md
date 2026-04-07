@@ -378,25 +378,17 @@ Logo: "Cheerful File" icon by Kokota (The Noun Project), CC BY 3.0.
 
 ---
 
-## Bonus Blog Post: Token Vault Is the Missing Auth Layer for AI Agents
+## Bonus Blog Post: Three Days, Three Token Vault Breakthroughs, One `invalid_auth` That Changed Everything
 
-Every AI agent tutorial solves the same problem wrong. The agent needs to call three APIs on behalf of a user. So the developer stores three sets of OAuth tokens in a database, writes refresh logic for each provider, and hopes nothing expires at 2 AM.
+I joined this hackathon late. The idea was simple: build an agent that scans OneDrive, Slack, and Outlook for sensitive humanitarian data and fixes it. The hard part wasn't the scanning. It was getting one agent to act across three services on behalf of one user without storing any of their credentials.
 
-I built Amanat, a data governance agent that scans OneDrive, Slack, and Outlook for sensitive humanitarian data. The agent needs to read files from Microsoft Graph, search Slack messages, scan Outlook emails, and then take action: revoke sharing links, post alerts, send warning emails. That is three OAuth providers, five different scopes, and two token types (user tokens for reading, bot tokens for writing).
+**Day 1: The `invalid_auth` moment.** I had a single `access_token` variable. Every tool got the same token. OneDrive scans worked. Slack scans returned `invalid_auth`. I spent an hour staring at the Slack API docs before I realized: I was sending a Microsoft Graph token to the Slack API. Token Vault already scopes tokens per connection. I built a `_service_tokens` dictionary: `{"onedrive": "...", "slack": "...", "outlook": "..."}`. Each tool picks its own. The OneDrive token physically cannot touch the Slack API. For an agent handling refugee biometric data, this is the kind of isolation that matters.
 
-Auth0 Token Vault solved the credential management problem I did not want to solve.
+**Day 2: Slack fought back.** Slack's v2 OAuth uses `user_scope` as a separate parameter from `scope`. Auth0's generic oauth2 connection only sends `scope`. I could not get `chat:write` through Token Vault no matter what I configured. I was ready to drop Slack entirely. Then I realized: data protection alerts should come from a bot, not impersonate the user. I set up a separate bot token for write operations. Token Vault handles reads. The bot handles writes. The bug became the architecture.
 
-**One authentication event, multiple services.** The user logs in once via Auth0 Universal Login. Then they connect each service individually through Connected Accounts. Each connection is a separate OAuth consent screen with its own scopes. The user sees exactly what they are granting. They can disconnect OneDrive without affecting Slack.
+**Day 3: CIBA.** The original plan was an in-UI "Approve/Deny" button for destructive actions. It worked, but it felt wrong. A protection officer shouldn't approve deletion of a GBV file by clicking a button in the same chat window. I configured CIBA with Guardian push notifications. Now the agent sends a push to the user's phone with a binding message: "Amanat: revoke sharing GBV_Incident_Reports." The user approves on a separate device. The `auth_req_id` and CIBA token are displayed in the chat as proof. This is what step-up auth should look like for AI agents.
 
-**Federated token exchange instead of token storage.** When Amanat needs a Microsoft Graph token, it sends a single POST to Auth0's token endpoint with the user's refresh token and `connection=microsoft-graph`. Auth0 returns a scoped access token. Amanat never stores raw service credentials. If a token expires mid-scan, the exchange runs again transparently. The grant type (`urn:auth0:params:oauth:grant-type:token-exchange:federated-connection-access-token`) is verbose, but it encapsulates the entire token lifecycle.
-
-**Per-service isolation.** This was the property I did not appreciate until I needed it. Early in development, I had a single `access_token` variable that I passed to every tool. The OneDrive token got sent to the Slack API. Slack returned `invalid_auth`. The fix was obvious once I saw it: Token Vault already scopes tokens per connection. I built a `_service_tokens` dictionary that maps `{"onedrive": "...", "slack": "...", "outlook": "..."}` and each tool picks its own token. The OneDrive token physically cannot touch the Slack API. For an agent handling refugee biometric data, that isolation is not a nice-to-have.
-
-**The My Account API pattern.** Token Vault uses a My Account API (`https://{domain}/me/`) with `read:connected_accounts` and `create:connected_account_tokens` scopes. The agent can check which services are connected before attempting a scan, and prompt the user to connect missing services. The MRRT (Multi-Resource Refresh Token) flow means one refresh token works across the My Account API and all connected services.
-
-**What I would tell another agent developer:** do not build token management yourself. The refresh logic, the expiry handling, the per-service scoping, the user consent UI, the disconnect flow, the token rotation, all of it is infrastructure that Token Vault handles and that you will get wrong if you implement it from scratch. I spent my time on PII detection and policy grounding instead of writing a token database. That was the right trade.
-
-The pattern generalizes beyond humanitarian data. Any AI agent that touches multiple services on behalf of a user (CRM + email + calendar, or cloud storage + messaging + analytics) faces the same multi-provider OAuth problem. Token Vault's federated exchange is the correct abstraction: one identity provider, per-service consent, scoped tokens, automatic refresh, user-controlled disconnect. Build your agent logic. Let Auth0 handle the credentials.
+**What I'd tell the next person building a multi-service agent:** Token Vault handles the OAuth lifecycle you don't want to build. The MRRT pattern (one refresh token, multiple audiences) means you can discover connected services and exchange tokens with a single credential. CIBA gives you proper step-up auth without building your own approval flow. I spent my time on PII detection and policy RAG instead of writing a token database. That was the right trade.
 
 ## Built With
 
