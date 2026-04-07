@@ -71,14 +71,16 @@ QUERIES = [
     ("rem-04", "Send an email alert to the sender about the policy violation."),
     ("rem-05", "Which files have exceeded their data retention period?"),
 
-    # --- Edge cases (7) ---
+    # --- Edge cases (4) ---
     ("edge-01", "What can you help me with?"),
     ("edge-02", "What services are you connected to?"),
     ("edge-03", "Can you explain what PII means in a humanitarian context?"),
     ("edge-04", "What would happen if our beneficiary data was leaked?"),
-    ("edge-05", "Tell me about the Rohingya data protection incident."),
-    ("edge-06", "What is the difference between data governance and data protection?"),
-    ("edge-07", "Thank you, that was helpful."),
+
+    # --- Multilingual (3) ---
+    ("lang-ar", "ابحث عن أي ملفات تحتوي على بيانات شخصية مشاركة بشكل عام"),
+    ("lang-fr", "Recherchez les messages Slack contenant des noms de bénéficiaires ou des informations médicales"),
+    ("lang-es", "Escanea los archivos de OneDrive en busca de datos personales expuestos públicamente"),
 ]
 
 
@@ -105,6 +107,9 @@ def classify_result(label: str, answer: str) -> str:
         return "PASS" if any(w in a for w in ["revoke", "redact", "alert", "email", "retention", "notify"]) else "PARTIAL"
     elif label.startswith("edge"):
         return "PASS" if len(answer) > 50 else "PARTIAL"
+    elif label.startswith("lang"):
+        # Multilingual: agent should call a tool and return substantive content
+        return "PASS" if len(answer) > 100 else "PARTIAL"
 
     return "PARTIAL"
 
