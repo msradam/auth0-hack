@@ -286,7 +286,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 | "Revoke public sharing on the GBV incident reports." | remediation | 37s |
 | "What can you help me with?" | edge case | 49s |
 
-All 40 passed: OneDrive scan (8/8), Slack scan (4/4), Outlook scan (3/3), policy/RAG (8/8), compliance (5/5), remediation (5/5), edge cases (7/7). Full results in `test_results.jsonl`.
+All 40 passed: OneDrive scan (8/8), Slack scan (4/4), Outlook scan (3/3), policy/RAG (8/8), compliance (5/5), remediation (5/5), edge cases (4/4), multilingual (3/3: Arabic, French, Spanish). Full results in `test_results.jsonl`.
 
 ## What I Learned
 
