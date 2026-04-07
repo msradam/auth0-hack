@@ -59,7 +59,7 @@ Humanitarian organizations handle refugee case files, GBV incident reports, biom
 
 > "The Data of the Most Vulnerable People is the Least Protected" — Human Rights Watch, 2023
 
-The ICRC published a 400-page Handbook on Data Protection in Humanitarian Action (2nd ed., 2020). The IASC published Operational Guidance on Data Responsibility (2023). The Sphere Standards include Protection Principles for sensitive information handling. The policy documents exist. Nobody has built software that enforces them.
+The ICRC published a 400-page Handbook on Data Protection in Humanitarian Action. The IASC published Operational Guidance on Data Responsibility (2023). The Sphere Standards include Protection Principles for sensitive information handling. The policy documents exist. Nobody has built software that enforces them.
 
 The tools humanitarian organizations actually use (KoBoToolbox for data collection, DHIS2 for health data, Microsoft 365 for everything else) have baseline security (encryption in transit, optional encryption at rest, basic RBAC) but no automated data classification, no sensitivity detection, no cross-platform governance, no policy enforcement. A CyberPeace Institute study found that 41% of NGOs had been attacked in the past three years, only 4% had actionable cybersecurity policies, and 56% had no cybersecurity budget at all (CyberPeace, 2024). A Dalberg/ICRC joint study found fewer than half of humanitarian organizations had data protection policies meeting international standards (ICRC Handbook, 2020).
 
@@ -274,7 +274,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 
 **Research-backed PII detection.** The hybrid detection architecture is grounded in "An Evaluation Study of Hybrid Methods for Multilingual PII Detection" (2025), which demonstrated that combining regex with LLM-based extraction outperforms either approach alone. My implementation catches implicit identifiers like "the 15-year-old girl in Vakwa Shelter" that regex cannot detect.
 
-**40/40 agent queries pass.** A test harness (`scripts/test_40_queries.py`) runs 40 queries across 7 categories. Each query is classified as PASS, PARTIAL, or FAIL based on whether the agent called the right tool and returned relevant content. Sample results:
+**40/40 agent queries pass.** A test harness (`scripts/test_40_queries.py`) runs 40 queries across 8 categories. Each query is classified as PASS, PARTIAL, or FAIL based on whether the agent called the right tool and returned relevant content. Sample results:
 
 | Query | Category | Time |
 |-------|----------|------|
@@ -285,6 +285,7 @@ Solution: separate read and write credentials. Token Vault handles read operatio
 | "Generate a DPIA for our biometric enrollment program that collects fingerprints and iris scans." | compliance | 50s |
 | "Revoke public sharing on the GBV incident reports." | remediation | 37s |
 | "What can you help me with?" | edge case | 49s |
+| "ابحث عن أي ملفات تحتوي على بيانات شخصية مشاركة بشكل عام" | multilingual (Arabic) | 5s |
 
 All 40 passed: OneDrive scan (8/8), Slack scan (4/4), Outlook scan (3/3), policy/RAG (8/8), compliance (5/5), remediation (5/5), edge cases (4/4), multilingual (3/3: Arabic, French, Spanish). Full results in `test_results.jsonl`.
 
