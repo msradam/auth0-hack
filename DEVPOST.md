@@ -372,6 +372,8 @@ CyberPeace Institute. (2024). NGOs at Risk in International Geneva. https://gene
 
 Dalberg/ICRC. (2020). Referenced in ICRC Handbook on Data Protection in Humanitarian Action, 2nd edition.
 
+Logo: "Cheerful File" icon by Kokota (The Noun Project), CC BY 3.0.
+
 ---
 
 ## Bonus Blog Post: Token Vault Is the Missing Auth Layer for AI Agents
