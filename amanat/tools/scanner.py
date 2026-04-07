@@ -8,7 +8,6 @@ synthetic demo data for development.
 
 import json
 import re
-from pathlib import Path
 
 from amanat.knowledge.rules import evaluate_file
 
@@ -497,8 +496,23 @@ DEMO_MESSAGES = {
             ),
             "attachments": ["Beneficiary_List_Q1_Full.xlsx"],
         },
+        {
+            "subject": "RE: Medical transport for beneficiary",
+            "from": "penn@wra-waqwaq.org",
+            "to": "logistics@wra-waqwaq.org",
+            "timestamp": "2026-03-22 08:30",
+            "content": (
+                "Confirming medical transport for Rozel al-Bahar (WAQ-26C00891) from "
+                "Kanbaloh IDP hub to Ambara District Hospital. Diagnosis: acute respiratory "
+                "infection, needs specialist referral. GPS pickup: 12.4567, 43.8901. "
+                "Contact his wife Amira at +252-61-555-0147."
+            ),
+        },
     ],
 }
+
+# Alias outlook to gmail demo data
+DEMO_MESSAGES["outlook"] = DEMO_MESSAGES["gmail"]
 
 
 def execute_tool(tool_name: str, args: dict, access_token: str | None = None) -> str:
@@ -1180,7 +1194,7 @@ def _check_consent(file_id: str, service: str) -> str:
 
         lines = [
             f"CONSENT CHECK: {name}",
-            f"Status: NO CONSENT RECORD FOUND",
+            "Status: NO CONSENT RECORD FOUND",
             f"Contains PII: {'Yes' if pii else 'No'}",
             "",
             "ISSUES:",
