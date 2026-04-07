@@ -298,7 +298,7 @@ All 40 passed: OneDrive scan (8/8), Slack scan (4/4), Outlook scan (3/3), policy
 
 **Hybrid approaches beat pure approaches.** PII detection (regex + LLM beats either alone) and policy retrieval (BM25 + document preprocessing beats keyword search) both pointed the same direction. Combining specialized approaches kept outperforming any single method at every layer.
 
-**Agent authorization needs a consent model, not just an auth model.** The hard question wasn't "how do I get a token." It was "when should the agent be allowed to act?" Scanning is read-only, fine. Revoking a sharing link on a GBV file has real consequences. I landed on CIBA: the agent sends a Guardian push notification to the user's phone describing the exact action. The user approves or denies on a separate device. Clicking "yes" in a chat window isn't enough when the action affects real files containing real people's data.
+**Agent authorization needs a consent model on top of the auth model.** The hard question wasn't "how do I get a token." It was "when should the agent be allowed to act?" Scanning is read-only, fine. Revoking a sharing link on a GBV file has real consequences. I landed on CIBA: the agent sends a Guardian push notification to the user's phone describing the exact action. The user approves or denies on a separate device. Clicking "yes" in a chat window isn't enough when the action affects real files containing real people's data.
 
 ## Why This Matters Beyond the Demo
 
