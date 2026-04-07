@@ -124,6 +124,8 @@ Demo files across OneDrive (`/WRA Operations/`):
 
 ## How I Built It
 
+Full technical breakdown in [ARCHITECTURE.md](https://github.com/msradam/amanat/blob/main/ARCHITECTURE.md). Key sections below.
+
 ### Auth0 Integration
 
 #### Token Vault (Connected Accounts)
