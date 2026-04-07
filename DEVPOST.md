@@ -381,7 +381,7 @@ Logo: "Cheerful File" icon by Kokota (The Noun Project), CC BY 3.0.
 
 ## Bonus Blog Post: Three Days, Three Token Vault Breakthroughs, One `invalid_auth` That Changed Everything
 
-I joined this hackathon late. The idea was simple: build an agent that scans OneDrive, Slack, and Outlook for sensitive humanitarian data and fixes it. The hard part wasn't the scanning. It was getting one agent to act across three services on behalf of one user without storing any of their credentials.
+I joined this hackathon late with an idea I'd been sitting on since my time at UNICEF Innovation: humanitarian organizations need automated data governance, but the tools don't exist and the data is too sensitive to send to cloud APIs. IBM releasing Granite 4 Micro under Apache 2.0 with ISO 42001 certification made the local LLM piece viable. Auth0 Token Vault made the multi-service credential piece viable. The timing lined up.
 
 **Day 1: The `invalid_auth` moment.** I had a single `access_token` variable. Every tool got the same token. OneDrive scans worked. Slack scans returned `invalid_auth`. I spent an hour staring at the Slack API docs before I realized: I was sending a Microsoft Graph token to the Slack API. Token Vault already scopes tokens per connection. I built a `_service_tokens` dictionary: `{"onedrive": "...", "slack": "...", "outlook": "..."}`. Each tool picks its own. The OneDrive token physically cannot touch the Slack API. For an agent handling refugee biometric data, this is the kind of isolation that matters.
 
@@ -389,7 +389,7 @@ I joined this hackathon late. The idea was simple: build an agent that scans One
 
 **Day 3: CIBA.** The original plan was an in-UI "Approve/Deny" button for destructive actions. It worked, but it felt wrong. A protection officer shouldn't approve deletion of a GBV file by clicking a button in the same chat window. I configured CIBA with Guardian push notifications. Now the agent sends a push to the user's phone with a binding message: "Amanat: revoke sharing GBV_Incident_Reports." The user approves on a separate device. The `auth_req_id` and CIBA token are displayed in the chat as proof. This is what step-up auth should look like for AI agents.
 
-**What I'd tell the next person building a multi-service agent:** Token Vault handles the OAuth lifecycle you don't want to build. The MRRT pattern (one refresh token, multiple audiences) means you can discover connected services and exchange tokens with a single credential. CIBA gives you proper step-up auth without building your own approval flow. I spent my time on PII detection and policy RAG instead of writing a token database. That was the right trade.
+**What I'd tell the next person building a multi-service agent:** Token Vault handles the OAuth lifecycle you don't want to build. The MRRT pattern (one refresh token, multiple audiences) means you can discover connected services and exchange tokens with a single credential. CIBA gives you proper step-up auth without building your own approval flow. And if your agent handles data that can't leave the device, pair Token Vault with a local model like Granite. Token Vault manages the credentials so the agent can act across services. The local model ensures the data itself stays put. I spent my time on PII detection and policy RAG instead of writing a token database or worrying about data exfiltration. That was the right trade.
 
 ## Built With
 
