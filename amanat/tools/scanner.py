@@ -554,15 +554,18 @@ def execute_tool(tool_name: str, args: dict, access_token: str | None = None) ->
     elif tool_name == "revoke_sharing":
         if use_live_onedrive:
             return revoke_onedrive_sharing(access_token, args.get("file_id", ""))
-        return json.dumps({"error": "Remediation requires live API access"})
+        file_id = args.get("file_id", "unknown")
+        return f"Sharing revoked on {file_id} (demo mode). In production, this calls Microsoft Graph API to remove all sharing links.\n\n---JSON---\n" + json.dumps({"status": "success", "action": "revoke_sharing", "file_id": file_id, "demo": True})
     elif tool_name == "download_file":
         if use_live_onedrive:
             return download_onedrive_file(access_token, args.get("file_id", ""))
-        return json.dumps({"error": "Download requires live API access"})
+        file_id = args.get("file_id", "unknown")
+        return f"Downloaded {file_id} to local storage (demo mode).\n\n---JSON---\n" + json.dumps({"status": "success", "action": "download_file", "file_id": file_id, "demo": True})
     elif tool_name == "delete_file":
         if use_live_onedrive:
             return delete_onedrive_file(access_token, args.get("file_id", ""))
-        return json.dumps({"error": "Delete requires live API access"})
+        file_id = args.get("file_id", "unknown")
+        return f"Moved {file_id} to trash (demo mode). File was downloaded locally first.\n\n---JSON---\n" + json.dumps({"status": "success", "action": "delete_file", "file_id": file_id, "demo": True})
     # --- New workflow tools ---
     elif tool_name == "redact_file":
         file_id = args.get("file_id", "")
