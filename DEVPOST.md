@@ -306,7 +306,7 @@ Enterprise DLP tools (Varonis, Microsoft Purview, Symantec DLP) cost $5,000 to $
 
 UNHCR runs Microsoft 365 across field locations. WFP's SCOPE system holds data on 90 million beneficiaries. These organizations use OneDrive, Outlook, and Slack daily. But none of these platforms have built-in humanitarian data governance. No automated sensitivity detection, no policy enforcement against ICRC rules, no cross-service visibility into what's been shared and with whom. Amanat sits on top of these existing services via Token Vault and adds the governance layer that's missing.
 
-Most AI agent projects connect to cloud services to send emails or schedule meetings. Amanat connects to cloud services to find data that could get someone killed, and fixes it. Token Vault isn't a demo convenience here. It's what lets the agent act on real files across real services with real consequences, without the agent ever holding raw credentials.
+Amanat acts on real files across real services with real consequences. Token Vault is what makes that possible without the agent ever holding raw credentials.
 
 ## What's Next for Amanat
 
