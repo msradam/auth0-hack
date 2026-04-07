@@ -246,7 +246,7 @@ User Query → Chainlit Web UI → Strands Agent (Granite 4 Micro, local) → To
 
 ### UI Design
 
-Chat interface over dashboard. A protection officer says "scan the Protection folder" and sees results inline. Each tool call shows as a collapsible Step. Scan results render as Plotly charts. Destructive actions trigger CIBA step-up auth with Guardian push to the user's phone.
+Chat interface over dashboard. Field workers in humanitarian operations don't have time to learn a new tool with 15 tabs. They need to say "scan the Protection folder" and see what comes back. Each tool call shows as a collapsible Step in the chat so the user can see exactly what the agent did (which API it called, what it found) without results cluttering the conversation. Scan results render as interactive Plotly charts for quick triage: risk distribution by file, PII types found, sharing status breakdown. The CIBA push for destructive actions is a UX decision as much as a security one. A protection officer approving deletion of a GBV file should do it on a separate device with a clear binding message, not by clicking a button in the same window where the chatbot just said "do you want me to delete this?"
 
 ## Challenges I Ran Into
 
@@ -354,13 +354,13 @@ Human Rights Watch. (2021). UN Shared Rohingya Data Without Informed Consent. ht
 
 Human Rights Watch. (2023). The Data of the Most Vulnerable People is the Least Protected. https://www.hrw.org/news/2023/07/11/data-most-vulnerable-people-least-protected
 
-ICRC. (2020). Handbook on Data Protection in Humanitarian Action (2nd ed.). https://www.icrc.org/en/data-protection-humanitarian-action-handbook
+ICRC. (2020). Handbook on Data Protection in Humanitarian Action. https://www.icrc.org/en/data-protection-humanitarian-action-handbook
 
 ICRC. (2022). Cyber attack on ICRC: What we know. https://www.icrc.org/en/document/cyber-attack-icrc-what-we-know
 
 IASC. (2023). Operational Guidance on Data Responsibility in Humanitarian Action. https://interagencystandingcommittee.org/operational-response/iasc-operational-guidance-data-responsibility-humanitarian-action
 
-IBM. (2025). Granite 4.0: Hyper-efficient, High Performance Hybrid Models for Enterprise. https://www.ibm.com/new/announcements/ibm-granite-4-0
+IBM. (2025). Granite 4.0: Hyper-efficient, High Performance Hybrid Models for Enterprise. https://www.ibm.com/granite
 
 Sphere Association. (2018). The Sphere Handbook (4th ed.). https://spherestandards.org/handbook/
 
