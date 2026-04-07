@@ -413,3 +413,5 @@ The pattern generalizes beyond humanitarian data. Any AI agent that touches mult
 ## Try It Out
 
 - [GitHub Repo](https://github.com/msradam/amanat)
+- [Architecture Doc](https://github.com/msradam/amanat/blob/main/ARCHITECTURE.md)
+- [Synthetic Demo Data](https://github.com/msradam/amanat/tree/main/demo-data/drive)
