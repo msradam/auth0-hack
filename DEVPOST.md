@@ -10,7 +10,7 @@ Amanat connects to your OneDrive, Slack, and Outlook through Auth0 Token Vault, 
 
 ## Demo Video
 
-The 3-minute demo video shows Amanat running locally against my personal Microsoft 365 and Slack accounts, connected via Auth0 Token Vault. The OneDrive folders, Outlook inbox, and Slack workspace shown in the video are real accounts populated with synthetic humanitarian data from the Waqwaq scenario. All scans, remediations, and alerts execute live against the Microsoft Graph and Slack APIs. The video is sped up in places to fit the 3-minute window.
+The 3-minute demo video shows Amanat running locally against my personal Microsoft 365 and Slack accounts, connected via Auth0 Token Vault. The OneDrive folders, Outlook inbox, and Slack workspace shown in the video are real accounts populated with synthetic humanitarian data from the Waqwaq scenario. All scans, remediations, CIBA step-up auth, and alerts execute live against the Microsoft Graph and Slack APIs. The video is sped up in places to fit the 3-minute window.
 
 ## Screenshots
 
@@ -67,7 +67,7 @@ I built Amanat to fill that gap.
 
 ## What It Does
 
-You log in through Auth0, connect your OneDrive, Slack, and Outlook via Token Vault, and tell the agent what to look for. It scans your files, messages, and emails for PII, checks what's publicly shared, cites the relevant ICRC or GDPR section, and can revoke sharing links or redact files on the spot. The entire analysis runs on a local LLM. Beneficiary data never leaves your machine.
+You log in through Auth0, connect your OneDrive, Slack, and Outlook via Token Vault, and tell the agent what to look for. It scans your files, messages, and emails for PII, checks what's publicly shared, cites the relevant ICRC or GDPR section, and can revoke sharing links or redact files on the spot.
 
 ### Why These Three Services
 
