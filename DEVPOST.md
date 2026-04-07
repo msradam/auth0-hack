@@ -381,7 +381,7 @@ Logo: "Cheerful File" icon by Kokota (The Noun Project), CC BY 3.0.
 
 ## Bonus Blog Post: Three Days, Three Token Vault Breakthroughs, One `invalid_auth` That Changed Everything
 
-I joined this hackathon late with an idea I'd been sitting on since my time at UNICEF Innovation: humanitarian organizations need automated data governance, but the tools don't exist and the data is too sensitive to send to cloud APIs. IBM releasing Granite 4 Micro under Apache 2.0 with ISO 42001 certification made the local LLM piece viable. Auth0 Token Vault made the multi-service credential piece viable. The timing lined up.
+I joined this hackathon late. Years ago I interned at UNICEF Innovation building algorithms to calculate distances between schools and health facilities. The data sensitivity stuck with me, but the tooling didn't exist yet. IBM releasing Granite 4 Micro under Apache 2.0 with ISO 42001 certification made the local LLM piece viable. Auth0 Token Vault made the multi-service credential piece viable. The timing lined up.
 
 **Day 1: The `invalid_auth` moment.** I had a single `access_token` variable. Every tool got the same token. OneDrive scans worked. Slack scans returned `invalid_auth`. I spent an hour staring at the Slack API docs before I realized: I was sending a Microsoft Graph token to the Slack API. Token Vault already scopes tokens per connection. I built a `_service_tokens` dictionary: `{"onedrive": "...", "slack": "...", "outlook": "..."}`. Each tool picks its own. The OneDrive token physically cannot touch the Slack API. For an agent handling refugee biometric data, this is the kind of isolation that matters.
 
